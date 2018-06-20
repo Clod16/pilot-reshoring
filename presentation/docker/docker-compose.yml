@@ -1,0 +1,118 @@
+version: '2'
+services:
+   # orion
+  mongo:  
+   image: mongo:3.4
+   command: --nojournal
+   volumes:
+     - ./data/mongo/data:/data/db
+  orion:
+   image: fiware/orion:1.13.0
+   depends_on:
+    - mongo
+   ports: 
+    - "1026:1026"
+   #environment:
+   command:  -dbhost mongo
+  
+  nginx:
+    #restart: always
+   image: nginx:latest
+   ports:
+        - "80:80"
+   volumes:
+        - ./nginx.conf:/etc/nginx/nginx.conf:ro
+   volumes_from:
+        - wirecloud
+   links:
+        - wirecloud:wirecloud
+
+  postgres:
+        #restart: always
+     image: postgres:latest
+     volumes:
+        - ./data/postgres:/var/lib/postgresql/data
+     ports:
+        - "5432:5432"
+  ngsi-proxy:
+      image: fiware/ngsiproxy
+      ports:
+        - "8300:3000"
+
+  wirecloud:
+      image: fiware/wirecloud:latest-composable
+      depends_on:
+        - postgres
+        - ngsi-proxy
+      volumes:
+        - ./data/wirecloud/wirecloud_instance:/opt/wirecloud_instance
+        - ./data/wirecloud/static:/var/www/static
+  
+  event-generator-input:
+      container_name: event-generator-input
+      image: ascatox/event-generator-input
+      environment:
+       - LOGGING_LEVEL = debug
+       - FILENAME = logger_input.txt
+      ports:
+       - 9300:3000
+      volumes:
+       - /opt/hyperledger/configuration-network-fabric/crypto-config:/crypto-config
+       - /opt/hyperledger/presentation/resources:/usr/src/resources
+       - /opt/hyperledger/presentation/config:/usr/src/data
+      external_links:
+       - ca.example.com
+       - orderer.example.com
+       - peer0.org1.example.com
+       - peer1.org1.example.com
+       - peer2.org1.example.com
+       - peer3.org1.example.com
+      network_mode: configurationservice_byfn
+
+  event-generator-output:
+     container_name: event-generator-output
+     image: ascatox/event-generator-output
+     environment:
+      - LOGGING_LEVEL = debug
+      - FILENAME = logger_input.txt
+     ports:
+      - 9301:3000
+     volumes:
+      - /opt/hyperledger/configuration-network-fabric/crypto-config:/crypto-config
+      - /opt/hyperledger/presentation/resources:/usr/src/resources
+      - /opt/hyperledger/presentation/config:/usr/src/conf
+     external_links:
+      - ca.example.com
+      - orderer.example.com
+      - peer0.org1.example.com
+      - peer1.org1.example.com
+      - peer2.org1.example.com
+      - peer3.org1.example.com
+     network_mode: configurationservice_byfn
+   
+  presentation:
+     container_name: presentation
+     image: ascatox/presentation
+     environment:
+      - LOGGING_LEVEL = debug
+      - FILENAME = logger_input.txt
+     depends_on:
+        - orion
+        - wirecloud
+        - event-generator-input
+        - event-generator-output
+     
+     volumes:
+      - /opt/hyperledger/configuration-network-fabric/crypto-config:/crypto-config
+      - /opt/hyperledger/presentation/resources:/usr/src/resources
+      - /opt/hyperledger/presentation/config:/usr/src/data
+     external_links:
+      - ca.example.com
+      - orderer.example.com
+      - peer0.org1.example.com
+      - peer1.org1.example.com
+      - peer2.org1.example.com
+      - peer3.org1.example.com
+     network_mode: configurationservice_byfn
+
+

@@ -1,0 +1,15 @@
+version: '2.0'
+services:
+  event-generator-input:
+    container_name: event-generator-input
+    image: ascatox/event-generator-input
+    environment:
+      - LOGGING_LEVEL = error
+      - FILENAME = logger_input.txt
+    ports:
+      - 3000:3000
+    volumes:
+      - /opt/hyperledger/configuration-network-fabric/crypto-config:/crypto-config
+      - /opt/hyperledger/presentation/docker/resources:/usr/src/resources
+      - /opt/hyperledgerpresentation/docker/config:/usr/src/data
+   

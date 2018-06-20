@@ -1,0 +1,19 @@
+{
+    "contextBroker": {
+        "host": "localhost",
+        "port": 1026,
+        "protocol": "http"
+    },
+    "service": "faredge",
+    "subservice": "/demo",
+    "itemTypes": ["oven", "washingMachine", "dryer", "refrigerator"],
+    "bay": {
+        "capacity_max": 100,
+        "load_max": 100,
+        "n_bays": 20
+    },
+    "cronExpression": "20 * * * * *",
+    "event": {
+        "name": "EVENT"
+    }
+}
