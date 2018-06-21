@@ -1,1 +1,0 @@
-# event-generator-output
