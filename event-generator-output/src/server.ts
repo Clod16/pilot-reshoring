@@ -112,19 +112,19 @@ function contains(items, item) {
 
 function removeObjectFromArray(items, item) {
   if ((items == null) || (item == null)) {
-    return null;
+    return items;
   }
   for (var i = 0; i < items.length; i++) {
     if (items[i] === item) {
       items.splice(i, 1);
-      log.logger.debug('found and deleted');
+      log.logger.debug('Item found and deleted');
       return items;
     }
     if (items[i] instanceof Array){
       for (var j = 0; j < items.length; j++) {
         if (items[i][j] === item) {
           items[i].splice(j, 1);
-          log.logger.debug('found and deleted');
+          log.logger.debug('Item found and deleted');
           return items;
         }
       }
@@ -136,19 +136,19 @@ function removeObjectFromArray(items, item) {
 
 function cleanObjectFromArray(items, item) {
   if ((items == null) || (item == null)) {
-    return null;
+    return items;
   }
   for (var i = 0; i < items.length; i++) {
     if (items[i] === item) {
       items[i]=[];
-      log.logger.debug('found and deleted');
+      log.logger.debug('Item found and deleted');
       return items;
     }
     if (items[i] instanceof Array){
       for (var j = 0; j < items.length; j++) {
         if (items[i][j] === item) {
           items[i][j]=[];
-          log.logger.debug('found and deleted');
+          log.logger.debug('Item found and deleted');
           return items;
         }
       }
@@ -263,13 +263,13 @@ async function getItemsByBay(json: string) {
     ledgerClient = await LedgerClient.init(fabricConfig);
     bays = JSON.parse(await getBays());
     //console.log('bays=' + JSON.stringify(bays));
-    log.logger.debug('bays length=' + bays.length);
+    log.logger.debug(' Bays length = ' + bays.length);
     bayIndex =
         Array.apply(null, {length: bays.length}).map(Number.call, Number);
     bayIndex = shuffle(bayIndex);
     //log.logger.debug('bayIndex=' + JSON.stringify(bayIndex));
     for (var j = 0; j < bays.length; j++) {
-      log.logger.debug('BAY: id=' + bays[j].id+' capacity=' + bays[j].capacity+' load=' + bays[j].load);
+      log.logger.debug(' BAY: Id = ' + bays[j].id+' Capacity = ' + bays[j].capacity+' Load = ' + bays[j].load);
       //log.logger.debug('datetime=' + bays[j].datetime);
     }
 
@@ -281,12 +281,12 @@ async function getItemsByBay(json: string) {
      // console.log("id="+bays[i].id);
       items[i] = JSON.parse(await getItemsByBay(JSON.stringify('' + bays[i].id)));
       //console.log(" items[i]="+JSON.stringify( items[i]));
-      log.logger.debug(" items.length="+items[i].length);
+      log.logger.debug(" Items length : "+items[i].length);
 
       for (var j = 0; j < items[i].length; j++) {
         log.logger.debug(
-          'items[' + j + '].id=' + items[i][j].id +
-          ' bay.id=' + items[i][j].conveyorBay.id);
+          'items[ ' + j + ' ].id = ' + items[i][j].id +
+          ' bay.id = ' + items[i][j].conveyorBay.id);
       totalItems.push(items[i][j]);
       }
     }
@@ -294,7 +294,7 @@ async function getItemsByBay(json: string) {
   dataInit();
 
 
-  log.logger.debug('items length=' + items.length);
+  log.logger.debug('Items length : ' + items.length);
   // Index bays id list
 
   var job1 = schedule.scheduleJob(config.cronExpressionItemScanner, function() {
@@ -316,34 +316,33 @@ async function getItemsByBay(json: string) {
     (function theLoop(data, bayIndex, i) {
      
       setTimeout(function() {
-        log.logger.debug('processing bay ' + bayIndex[i - 1]+"...");
+        log.logger.debug('Processing bay ' + bayIndex[i - 1]+"...");
         var foundItem = false;
         var itemFound:ConveyorItem;
         // Verify if bay contains item in its list
         if (contains(items[bayIndex[i - 1]], totalItems[n_item])) {
-          log.logger.debug('found in bay with '+bays[bayIndex[i - 1]].id);
+          log.logger.debug('Item found in bay with Id: '+bays[bayIndex[i - 1]].id);
           foundItem = true;
           itemFound=totalItems[n_item];
           const conv = async () => {
             await conveyorItemIntoConveyorBay(itemFound);
-          }
-          conv();
-          //console.log("PRE TOTAL LIST="+JSON.stringify(totalItems));
-          // Delete from complete list
+            
+            // Delete from complete list
           totalItems = removeObjectFromArray(totalItems, itemFound);
-          //console.log("POST TOTAL LIST="+JSON.stringify(totalItems));
-          processedItems.push(itemFound);
-
+          
+          if(itemFound != null){
+            itemFound.state=ConveyorItem.State.InBay;
+            processedItems.push(itemFound);
+          }
           // Delete from bay list
-          //console.log("PRE BAY LIST="+JSON.stringify([items]));
-          log.logger.debug("items da gestire="+totalItems.length);
+          log.logger.debug("Total items in belt : "+totalItems.length);
           items =
             removeObjectFromArray(items, itemFound);
-          //console.log("POST BAY LIST="+JSON.stringify([items]));
+          }
+          conv();
           
-          //console.log("cache items ="+JSON.stringify(items));
+         
         } else {
-          //console.log('not found');
         }
         if ((--i) && (!foundItem)&&(totalItems.length>0)) {   // If i > 0, keep going
           theLoop(data, bayIndex, i);  // Call the loop again
@@ -356,7 +355,7 @@ async function getItemsByBay(json: string) {
       }, 500);
     
     })(null, bayIndex, bays.length);
-    log.logger.debug('ITEM IN GESTIONE id=' + totalItems[n_item].id +" for bay.id="+totalItems[n_item].conveyorBay.id);
+    log.logger.debug('Item exit with id : ' + totalItems[n_item].id +" for bay : "+totalItems[n_item].conveyorBay.id);
     
   })
 
@@ -388,17 +387,17 @@ async function getItemsByBay(json: string) {
         // console.log("id="+bays[i].id);
         updatedItems[i] = JSON.parse(await getItemsByBay(JSON.stringify('' + bays[i].id)));
         //console.log(" items[i]="+JSON.stringify( updatedItems[i]));
-        log.logger.debug("updatedItems.length="+updatedItems[i].length);
+        log.logger.debug(" Updated Items length : "+updatedItems[i].length);
 
         for (var j = 0; j < updatedItems[i].length; j++) {
           log.logger.debug(
-            'items[' + i + ']=' + updatedItems[i][j].id +
-            ' bay.id=' + updatedItems[i][j].conveyorBay.id);
+            'items[' + i + '] = ' + updatedItems[i][j].id +
+            ' bay id : ' + updatedItems[i][j].conveyorBay.id);
             updatedTotalItems.push(updatedItems[i][j]);
         }
       }
       if (updatedTotalItems.length>0){
-        log.logger.debug("replacing in memory items..."+updatedTotalItems.length+" new items")
+        log.logger.debug("Replacing in memory items... "+updatedTotalItems.length+" new items")
         totalItems=updatedTotalItems;
         items=updatedItems;
       }
@@ -415,11 +414,11 @@ async function getItemsByBay(json: string) {
 
   var job3 = schedule.scheduleJob(config.cronExpressionItemOut, function() {
     const emptyBays = async () => {
-    log.logger.debug('___________ item out _________');    
+    log.logger.debug('___________ Item Out _________');    
     
     const itemsOut = async () => {
       for (var i = 0; i < processedItems.length; i++) {   
-        log.logger.debug("item id="+processedItems[i].id+" going out...");
+        log.logger.debug("Item with Id: "+processedItems[i].id+" with status "+processedItems[i].state+" going out...");
         await itemOut(JSON.stringify(processedItems[i]));
         processedItems=removeObjectFromArray(processedItems,processedItems[i]);
       }
