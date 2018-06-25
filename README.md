@@ -6,8 +6,8 @@
 For all information regarding the Fabric network installation read this link --> https://github.com/far-edge/DistributedLedger/tree/develop/configuration-service-network
 
 ### Requirements:
-O.S. Ubuntu 16.04 <br/>
-LTS Node.js 8.x , TypeScript 2.9 , Docker 17.x and Docker Compose 1.18 <br/>
+#### O.S. Ubuntu 16.04 <br/>
+#### LTS Node.js 8.x , TypeScript 2.9 , Docker 17.x and Docker Compose 1.18 <br/>
 
 For download : 
 Node.js --> https://nodejs.org
