@@ -18,18 +18,18 @@
         "peers": [
           {
             "name": "peer0.org1.example.com",
-            "requestURL": "grpc://109.232.32.197:7051",
-            "eventURL": "grpc://109.232.32.197:7053"
+            "requestURL": "grpc://localhost:7051",
+            "eventURL": "grpc://localhost:7053"
           }
         ],
         "ca": {
-          "url": "http://109.232.32.197:7054",
+          "url": "http://localhost:7054",
           "name": "ca.example.com"
         },
         "orderers": [
           {
             "name": "orderer.example.com",
-            "url": "grpc://109.232.32.197:7050"
+            "url": "grpc://localhost:7050"
           }
         ],
         "users": [
