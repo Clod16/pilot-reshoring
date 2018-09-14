@@ -2,7 +2,7 @@ import { ConveyorItemType } from '.';
 import { ConveyorBay } from './ConveyorBay';
 
 export class ConveyorItem {
-    public typeObject   : string;
+    public typeObject   : string;   /* ITEM */
     public id           : string;
     public type         : ConveyorItemType;
     public conveyorBay  : ConveyorBay;
