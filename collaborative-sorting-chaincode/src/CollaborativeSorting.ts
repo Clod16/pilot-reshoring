@@ -7,7 +7,7 @@ import { Transform } from './utils/datatransform';
 import { Gate } from './Gate';
 import { ItemType } from './ItemType';
 import { Item } from './Item';
-import { EventPayload } from './EventPayload';
+// import { EventPayload } from './EventPayload';
 
 /**
  * The CollaborativeSorting class is a base class containing handlers for the `Invoke()` and `Init()` function which are required
@@ -39,9 +39,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
             throw new Error(`storeItem - ERROR: NO Item in Input`);
         }
         try {
+            await this.controlGates(stub);
             const item: Item = JSON.parse(itemStr);
-            /* Control all bays on - off */
-            // await this.controlBays(stub);
             await this.assignItemToGate(stub, item);
         } catch (err) {
             throw new Error(err);
@@ -56,14 +55,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
      *
      * @param stub
      */
-    public async editGate(stub: Stub, gate: string) {
+    public async editGate(stub: Stub, gateStr: string) {
         this.logger.info('************* editGate *************');
-        if (!gate) {
+        if (!gateStr) {
             throw new Error(`editGAte - ERROR: NO Gate in Input`);
         }
         try {
-            let gateIn: Gate = JSON.parse(gate);
-            await this.doEditGate(stub, gateIn);
+            let gate: Gate = JSON.parse(gateStr);
+            gate.datetime = new Date();
+            await this.doEditGate(stub, gate);
         } catch (err) {
             throw new Error(err);
         }
@@ -84,7 +84,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
             throw new Error('insertItemIntoBay - ERROR No input Item');
         }
         try {
-            await this.doGrabItem(stub, JSON.parse(itemStr));
+            const item: Item = JSON.parse(itemStr);
+            await this.doGrabItem(stub, item);
         } catch (err) {
             throw new Error(err);
         }
@@ -109,11 +110,11 @@ export class CollaborativeSorting implements ChaincodeInterface {
             return (Transform.bufferToObject(gate) as Gate).items;
         } catch (err) {
             this.logger.error('getItemsByGate ERROR for gate.id: ' + gateId + ' with code error: ' + err);
-            throw  new Error('getItemsByGate ERROR: ' + err);
+            throw   new Error('getItemsByGate ERROR: ' + err);
         }
     }
 
-  /* methods GET */
+    /* methods GET */
     /* getGateById(stub: Stub, id: string) */
     /* The getGateById method is called to GET the gate with this id */
     /**
@@ -122,19 +123,19 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
 
-    public async getGateById(stub: Stub, id: string) {
+    public async getGateById(stub: Stub, gateId: string) {
         this.logger.info('************* getGateById *************');
-        if (id == null || id == '') {
+        if (gateId == null || gateId == '') {
             this.logger.error('getGateById ERROR: id is empty or null!');
             throw new Error('getGateById ERROR: id is empty or null!');
         }
         try {
-            let keyGate: string = await this.generateKey(stub, 'GATE', id);
+            let keyGate: string = await this.generateKey(stub, 'GATE', gateId);
             let gate = await stub.getState(keyGate);
             return Transform.bufferToObject(gate) as Gate;
-        } catch (e) {
-            this.logger.error('getGateById ERROR: Gate not found with this id: ' + id);
-            return new Error('getGateById ERROR: ' + e);
+        } catch (err) {
+            this.logger.error('getGateById ERROR: Gate not found with this id: ' + gateId);
+            return  new Error('getGateById ERROR: ' + err);
         }
     }
 
@@ -151,7 +152,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info('************* getGates *************');
         try {
             let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
-            let gates = await Transform.iteratorToObjectList(iterator);
+            let gates    = await Transform.iteratorToObjectList(iterator);
             return gates;
         } catch (err) {
             this.logger.error('getGates ERROR code: ' + err);
@@ -172,7 +173,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info('************* getItems *************');
         try {
             let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
-            let items = await Transform.iteratorToObjectList(iterator);
+            let items    = await Transform.iteratorToObjectList(iterator);
             return items;
         } catch (err) {
             this.logger.error('getItems ERROR code: ' + err);
@@ -189,21 +190,19 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
 
-    public async getItemById(stub: Stub, id: string) {
+    public async getItemById(stub: Stub, ItemId: string) {
         this.logger.info('************* getItemById *************');
-        if (id == null || id == '') {
+        if (ItemId == null || ItemId == '') {
             this.logger.error('getItemById ERROR: id is empty or null!');
-            throw new Error('getItemById ERROR: id is empty or null!');
+            throw   new Error('getItemById ERROR: id is empty or null!');
         }
         try {
-            let keyItem: string = await this.generateKey(stub, 'ITEM', id);
+            let keyItem: string = await this.generateKey(stub, 'ITEM', ItemId);
             let item = await stub.getState(keyItem);
             return Transform.bufferToObject(item) as Item;
-        } catch (e) {
-            this.logger.error(
-                'getItemById ERROR: Item not found with this id: ' + id
-            );
-            return new Error(e);
+        } catch (err) {
+            this.logger.error('getItemById ERROR: Item not found with this id: ' + ItemId);
+            return  new Error('getItemById ERROR: ' + err);
         }
     }
 
@@ -247,20 +246,23 @@ export class CollaborativeSorting implements ChaincodeInterface {
         /* Init method initializes a List of Bay (allBays) and a List of Type (allTypes)  */
         /* INIT 2 types initial (869990965260, 869990965261) */
 
-        let typeA :ItemType = {id: '869990965260',
-                               description: ''};
+        let typeA: ItemType = {
+            id: '869990965260',
+            description: ''
+        };
 
-        let typeB :ItemType = {id: '869990965261',
-                               description: ''};
-
+        let typeB: ItemType = {
+            id: '869990965261',
+            description: ''
+        };
 
         try {
             await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
             await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
 
-        } catch (e) {
-            this.logger.error(`INIT - ERROR: Something wrong in put State of types ` + e);
-            throw new Error('INIT - ERROR: Something wrong in put State of types' + e);
+        } catch (err) {
+            this.logger.error('INIT - ERROR: Something wrong in put State of types ' + err);
+            throw   new Error('INIT - ERROR: Something wrong in put State of types ' + err);
         }
 
         /* INIT 10 gates initial (with precerence) */
@@ -312,11 +314,10 @@ export class CollaborativeSorting implements ChaincodeInterface {
             await this.doEditGate(stub, gateSeven);
             await this.doEditGate(stub, gateEight);
             await this.doEditGate(stub, gateNine);
-        } catch (e) {
-            this.logger.error(`INIT - ERROR: Something wrong in doEditGate of gate ` + e);
-            throw new Error('INIT - ERROR: Something wrong in doEditGate of gate ' + e);
+        } catch (err) {
+            this.logger.error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
+            throw   new Error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
         }
-
 
         // In INIT all Items must have state null
         let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
@@ -327,12 +328,12 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 try {
                     let keyItem = await this.generateKey(stub, 'ITEM', item.id);
                     await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
-                } catch (e) {
-                    throw new Error('INIT - ERROR: Something wrong in put State of item ' + e);
+                } catch (err) {
+                    this.logger.error('INIT - ERROR: Something wrong in put State of gate ' + err);
+                    throw   new Error('INIT - ERROR: Something wrong in put State of item ' + err);
                 }
             }
         }
-
 
         // @FIXME Use Loop for repetitive tasks
         return await this.executeMethod('init', args, stub, true);
@@ -355,7 +356,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         let ret = stub.getFunctionAndParameters();
         let fcn = ret.fcn;
-        let args = ret.params;
+        // let args = ret.params;
 
         this.logger.info('Invoke function: ' + fcn);
         return await this.executeMethod(ret.fcn, ret.params, stub);
@@ -417,7 +418,6 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
     }
 
-
     /* methods POST */
     /* controlGates() */
     /* The controlGates method is called to extract and control all gates  */
@@ -447,13 +447,13 @@ export class CollaborativeSorting implements ChaincodeInterface {
                     this.logger.info('Gate with id: ' + exitGate.id + ' switched OFF due to inactivity ');
 
                     let items = new Array<Item>();
-                    
+
                     items = await this.getItemsByGate(stub, exitGate.id);
                     for (let item of items) {
                         await this.assignItemToGate(stub, item);
                     }
                     exitGate.enable = false;
-                    exitGate.items  = [];
+                    exitGate.items = [];
                     await this.doEditGate(stub, exitGate);
                 }
             }
@@ -547,9 +547,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
             let keyGate = await this.generateKey(stub, 'GATE', gate.id);
             await stub.putState(keyGate, Buffer.from(JSON.stringify(gate)));
         } catch (err) {
-            this.logger.error('insertGateIntoTheLedger - ERROR: Something wrong in put State of gate ' + err);
-            this.logger.error('insertGateIntoTheLedger - GATE id: ' + gate.id);
-            throw new Error('insertGateIntoTheLedger - ERROR: Something wrong in put State of bay ' + err);
+            this.logger.error('doEditGate - ERROR: Something wrong in put State of gate ' + err);
+            this.logger.error('doEditGate - GATE id: ' + gate.id);
+            throw new Error('doEditGate - ERROR: Something wrong in put State of bay ' + err);
         }
     }
 
@@ -566,11 +566,18 @@ export class CollaborativeSorting implements ChaincodeInterface {
         });
     }
 
-
+    /* methods POST */
+    /* doGrabItem */
+    /* The doGrabItem method is called to Delete item from the ledger because is grabbed by Gate (Bay) */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
     private async doGrabItem(stub: Stub, item: Item) {
         this.logger.info('########### doGrabItem ###########');
         let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
-        let gates    = await Transform.iteratorToObjectList(iterator);
+        let gates = await Transform.iteratorToObjectList(iterator);
         for (let gate of gates) {
             let exitGate = gate as Gate;
             if (exitGate.enable && exitGate.idConnectedBay != null) {
@@ -578,16 +585,31 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 for (let itemOfGate of exitGate.items) {
                     if (item.id === itemOfGate.id) {
                         isFound = true;
-                        exitGate.removeItem(itemOfGate);
-                        await this.doEditGate(stub, exitGate);
-                        await this.doDeleteItem(stub, item);
-                        break;
-                    }               
+                        try {
+                            /* remove the item from the list items assigned to the Gate exitGate and update the Gate */
+                            exitGate.removeItem(itemOfGate);
+                            await this.doEditGate(stub, exitGate);
+                        } catch (err) {
+                            this.logger.error('doGrabItem - ERROR in call doEditGate: itemOfGate.id: ' + itemOfGate.id);
+                            throw   new Error('doGrabItem - doEditGate ERROR with code: ' + err);
+                        }
+
+                        try {
+                            /* remove the item from the ledger; items is into the bay */
+                            await this.doDeleteItem(stub, item);
+                            this.logger.debug('doGrabItem - Item with id: ' + item.id + ' removed from the Conveyor Loop (and from the Ledger)');
+                            break;
+                        } catch (err) {
+                            this.logger.error('doGrabItem - ERROR in call doDeleteItem: item.id: ' + item.id);
+                            throw   new Error('doGrabItem - doDeleteItem ERROR with code: ' + err);
+                        }
+
+                    }
                 }
                 if (!isFound) {
                     this.logger.error('doGrabItem - ERROR: item not found in any gate');
                     this.logger.error('doGrabItem - ITEM id: ' + item.id);
-                    throw new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
+                    throw   new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
                 }
             }
         }
@@ -610,7 +632,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         } catch (err) {
             this.logger.error('doDeleteItem - ERROR: Something wrong in delete State of item ' + err);
             this.logger.error('doDeleteItem - Item id: ' + item.id);
-            throw new Error('doDeleteItem - ERROR: Something wrong in delete State of item ' + err);
+            throw   new Error('doDeleteItem - ERROR: Something wrong in delete State of item ' + err);
         }
     }
 
@@ -618,7 +640,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         // this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
         return stub.createCompositeKey(type, [id]);
     }
-
+/*
     private async createEvent(stub: Stub, gate: Gate) {
         this.logger.info('########### createEvent ###########');
         let items = Array<Item>();
@@ -663,9 +685,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.debug('createEvent - EVENT SEND: ' + JSON.stringify(event));
         return event;
     }
-
-    private sleepFor(sleepDuration: number) {
-        var now = new Date().getTime();
-        while (new Date().getTime() < now + sleepDuration) { /* do nothing */ }
-    }
+*/
+//    private sleepFor(sleepDuration: number) {
+//        var now = new Date().getTime();
+//        while (new Date().getTime() < now + sleepDuration) { /* do nothing */ }
+//    }
 }
