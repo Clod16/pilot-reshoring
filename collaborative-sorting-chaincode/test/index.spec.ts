@@ -6,8 +6,8 @@ import { Transform } from '../src/utils/datatransform';
 import * as mocha from 'mocha';
 import { expect } from 'chai';
 import { CollaborativeSorting } from '../src';
-import { ConveyorItem } from '../src/ConveyorItem';
-import { ConveyorBay } from '../src/ConveyorBay';
+import { Item } from '../src/Item';
+import { Gate } from '../src/Gate';
 
 const chaincode = new CollaborativeSorting();
 
@@ -32,35 +32,35 @@ describe('Test Mockstub', () => {
         const args = ['arg1', 'arg2'];
         await stub.mockInit('test', args);
 
-    //    let typeOven = new ConveyorItemType('1', 'Oven');
-    //    let typeFridge = new ConveyorItemType('2', 'Fridge');
-    //    let typeWashingMachine = new ConveyorItemType('3', 'WashingMachine');
-    //    let typeDishwasher = new ConveyorItemType('4', 'Dishwasher');
-    //    let typedryer = new ConveyorItemType('5', 'Dryer');
+    //    let typeOven = new ItemType('1', 'Oven');
+    //    let typeFridge = new ItemType('2', 'Fridge');
+    //    let typeWashingMachine = new ItemType('3', 'WashingMachine');
+    //    let typeDishwasher = new ItemType('4', 'Dishwasher');
+    //    let typedryer = new ItemType('5', 'Dryer');
 
-    //    const conveyorBay: ConveyorBay = new ConveyorBay('1', 10, 0, true, 1, new Date());
-        const item: ConveyorItem = {
+    //    const Gate: Gate = new Gate('1', 10, 0, true, 1, new Date());
+        const item: Item = {
             typeObject: 'ITEM',
             id: '7784199',
+            inLoop: null,
             type: {
                 id: '869990965260',
                 description: 'oven'
             },
-            conveyorBay: null,
-            state: null,
             position: 0
         };
-        const response: ChaincodeReponse = await stub.mockInvoke('test', ['storeConveyorItem', JSON.stringify(item)]);
+
+        const response: ChaincodeReponse = await stub.mockInvoke('test', ['storeItem', JSON.stringify(item)]);
         expect(response.status).to.deep.equal(200);
     });
     it('Should be able to edit conveyor bay', async () => {
         const stub = new ChaincodeMockStub('mock', chaincode);
         const args = ['arg1', 'arg2'];
         await stub.mockInit('test', args);
+                          
+        const bay: Gate = new Gate('1', '10', 0, true, 1, new Date());
 
-        const bay: ConveyorBay = new ConveyorBay('1', 10, 0, 0, true, 1, new Date());
-
-        const response: ChaincodeReponse = await stub.mockInvoke('test', ['editConveyorBay', JSON.stringify(bay)]);
+        const response: ChaincodeReponse = await stub.mockInvoke('test', ['editGate', JSON.stringify(bay)]);
         expect(response.status).to.deep.equal(200);
     });
     it('Should be able to get all bays', async () => {
@@ -68,7 +68,7 @@ describe('Test Mockstub', () => {
         const args = ['arg1', 'arg2'];
         await stub.mockInit('test', args);
 
-        // const bay: ConveyorBay = new ConveyorBay('1', 10, 0, true, 1, new Date());
+        // const bay: Gate = new Gate('1', 10, 0, true, 1, new Date());
       
         const response: ChaincodeReponse = await stub.mockInvoke('test', ['getBays']);
         expect(response.status).to.deep.equal(200);
