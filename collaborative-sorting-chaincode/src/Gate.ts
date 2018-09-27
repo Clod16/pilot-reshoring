@@ -13,13 +13,14 @@ export class Gate {
     public datetime         : Date;
 
     constructor(id: string, idConnectedBay:string, load:number, enable:boolean, position:number, datetime:Date) {
-        this.typeObject     = 'BAY';
+        this.typeObject     = 'GATE';
         this.id             = id;
         this.idConnectedBay = idConnectedBay;
         this.load           = load;
         this.preference     = new Array<ItemType>();
         this.enable         = enable;
         this.position       = position;
+        this.items          = [];
         this.datetime       = datetime;
     }
 
