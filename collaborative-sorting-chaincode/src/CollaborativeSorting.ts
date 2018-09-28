@@ -48,6 +48,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let keyItem = await this.generateKey(stub, 'ITEM', item.id);
+            this.logger.info('PUT ITEM by id with KEY: '+ keyItem + '<- ');
             await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
         } catch (err) {
             throw new Error('storeItem in putState - ERROR with code: ' + err);
@@ -131,13 +132,14 @@ export class CollaborativeSorting implements ChaincodeInterface {
      */
 
     public async getGateById(stub: Stub, gateId: string) {
-        this.logger.info('************* getGateById *************');
+        this.logger.info('************* getGateById: '+ gateId +' *************');
         if (gateId == null || gateId == '') {
             this.logger.error('getGateById ERROR: id is empty or null!');
             throw new Error('getGateById ERROR: id is empty or null!');
         }
         try {
             let keyGate: string = await this.generateKey(stub, 'GATE', gateId);
+            this.logger.debug('GET GATE by id with KEY: '+ keyGate);
             let gate = await stub.getState(keyGate);
             return Transform.bufferToObject(gate) as Gate;
         } catch (err) {
@@ -197,18 +199,19 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
 
-    public async getItemById(stub: Stub, ItemId: string) {
-        this.logger.info('************* getItemById *************');
-        if (ItemId == null || ItemId == '') {
+    public async getItemById(stub: Stub, itemId: string) {
+        this.logger.info('************* getItemById: '+ itemId +'  *************');
+        if (itemId == null || itemId == '') {
             this.logger.error('getItemById ERROR: id is empty or null!');
             throw new Error('getItemById ERROR: id is empty or null!');
         }
         try {
-            let keyItem: string = await this.generateKey(stub, 'ITEM', ItemId);
+            let keyItem: string = await this.generateKey(stub, 'ITEM', itemId);
+            this.logger.debug('GET ITEM by id with KEY: '+ keyItem);
             let item = await stub.getState(keyItem);
             return Transform.bufferToObject(item) as Item;
         } catch (err) {
-            this.logger.error('getItemById ERROR: Item not found with this id: ' + ItemId);
+            this.logger.error('getItemById ERROR: Item not found with this id: ' + itemId);
             return new Error('getItemById ERROR: ' + err);
         }
     }
@@ -334,6 +337,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 let item = itemElem as Item;
                 try {
                     let keyItem = await this.generateKey(stub, 'ITEM', item.id);
+                    this.logger.debug('PUT ITEM by id with KEY: '+ keyItem + '<- ');
                     await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
                 } catch (err) {
                     this.logger.error('INIT - ERROR: Something wrong in put State of gate ' + err);
@@ -398,7 +402,11 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
             // let payload = await method.call(this, this.getStubHelperFor(stub), params);
             // ascatox Using this.getStubHelper is impossible to test :-(
-            let payload = await method.call(this, stub, params);
+            let arg: String = '';
+            if (params && params[0]){
+                arg = params[0];
+            }
+            let payload = await method.call(this, stub, arg);
 
             if (payload && !Buffer.isBuffer(payload)) {
                 payload = Buffer.from(JSON.stringify(Transform.normalizePayload(payload)));
@@ -550,6 +558,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         try {
             let keyGate = await this.generateKey(stub, 'GATE', gate.id);
+            this.logger.debug('PUT GATE by id with KEY: '+ keyGate + '<- ');
             await stub.putState(keyGate, Buffer.from(JSON.stringify(gate)));
         } catch (err) {
             this.logger.error('doEditGate - ERROR: Something wrong in put State of gate ' + err);
@@ -642,7 +651,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
     }
 
     private async  generateKey(stub: Stub, type: string, id: string) {
-        // this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
+         this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
         return stub.createCompositeKey(type, [id]);
     }
     /*
