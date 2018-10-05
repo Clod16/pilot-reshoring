@@ -1,6 +1,7 @@
 import { ItemType } from './ItemType';
 import { Item } from './Item';
-
+import { Payload } from './Payload';
+       
 export class Gate {
     public typeObject       : string;       /* GATE */
     public id               : string;       /* 0 - 29 */
@@ -8,11 +9,12 @@ export class Gate {
     public load             : number;       /* 0 -> Empty - 1 -> Full */
     public preference       : Array<ItemType>;
     public enable           : boolean;      
-    public position         : number;
+    public position         : string;
     public items            : Array<Item>;  /* Items in ConveyorLoop assigned at this Gate*/
     public datetime         : Date;
-
-    constructor(id: string, idConnectedBay:string, load:number, enable:boolean, position:number, datetime:Date) {
+    public payload          : Payload;
+    
+    constructor(id: string, idConnectedBay:string, load:number, enable:boolean, position:string, datetime:Date) {
         this.typeObject     = 'GATE';
         this.id             = id;
         this.idConnectedBay = idConnectedBay;
@@ -22,16 +24,21 @@ export class Gate {
         this.position       = position;
         this.items          = [];
         this.datetime       = datetime;
+        this.payload        = null;
     }
 
-    addPreference(itemType:ItemType) {
+    public addPreference(itemType:ItemType) {
         this.preference.push(itemType); 
     }
 
-    addItem(item:Item) {
+    public addPayload(payload:Payload) {
+        this.payload = payload;
+    }
+
+    public addItem(item:Item) {
         this.items.push(item); 
     }
-    removeItem(item:Item) {
+    public removeItem(item:Item) {
         for (let i = 0; i < this.items.length; i++){
             if (this.items[i] === item) { 
                 this.items.splice(i, 1);

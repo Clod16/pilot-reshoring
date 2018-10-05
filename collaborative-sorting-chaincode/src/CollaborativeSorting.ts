@@ -7,6 +7,12 @@ import { Transform } from './utils/datatransform';
 import { Gate } from './Gate';
 import { ItemType } from './ItemType';
 import { Item } from './Item';
+import { Event } from './Event';
+import { EventContainer } from './EventContainer';
+
+/* Map for position - gate to search easily the gate associated when will be connect a new Bay */
+let mapPosGate = new Map();
+
 // import { EventPayload } from './EventPayload';
 
 /**
@@ -48,10 +54,84 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let keyItem = await this.generateKey(stub, 'ITEM', item.id);
-            this.logger.info('PUT ITEM by id with KEY: '+ keyItem + '<- ');
+            this.logger.info('PUT ITEM by id with KEY: ' + keyItem + '<- ');
             await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
         } catch (err) {
             throw new Error('storeItem in putState - ERROR with code: ' + err);
+        }
+    }
+
+    /* methods POST */
+    /* storeBay(stub: Stub, gate string) */
+    /* The storeGate method is called to insert a new Bay in a Gate */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async storeBay(stub: Stub, gateStr: string) {
+        this.logger.info('************* storeBay *************');
+        if (!gateStr) {
+            throw new Error(`storeBay - ERROR: NO Gate in Input`);
+        }
+        try {
+            let gate: Gate = JSON.parse(gateStr);
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            gateIn.payload = gate.payload;
+            gateIn = await this.doEditPreference(stub, gateIn);
+            await this.doCreateEvent(stub, 'storeBay', gateIn);
+            await this.doEditGate(stub, gateIn);
+        } catch (err) {
+            throw new Error(err);
+        }
+    }
+
+    /* methods POST */
+    /* updateBay(stub: Stub, gate string) */
+    /* The updateGate method is called to change the data of a Bay in a Gate */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async updateBay(stub: Stub, gateStr: string) {
+        this.logger.info('************* updateBay *************');
+        if (!gateStr) {
+            throw new Error(`updateBay - ERROR: NO Gate in Input`);
+        }
+        try {
+            let gate: Gate = JSON.parse(gateStr);
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            gateIn.payload = gate.payload;
+            gateIn = await this.doEditPreference(stub, gateIn);
+            await this.doCreateEvent(stub, 'updateBay', gateIn);
+            await this.doEditGate(stub, gateIn);
+        } catch (err) {
+            throw new Error(err);
+        }
+    }
+
+    /* methods POST */
+    /* removeBay(stub: Stub, gate string) */
+    /* The removeGate method is called to remove a Bay from a Gate */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async removeBay(stub: Stub, gateStr: string) {
+        this.logger.info('************* removeBay *************');
+        if (!gateStr) {
+            throw new Error('removeBay - ERROR: NO Gate in Input');
+        }
+        try {
+            let gate: Gate = JSON.parse(gateStr);
+            let gateIn = new Gate(gate.id, null, 0, false, gate.position, new Date());
+            gateIn.payload = null;
+            await this.doCreateEvent(stub, 'RemoveBay', gateIn);
+            await this.doEditGate(stub, gateIn);
+        } catch (err) {
+            throw new Error(err);
         }
     }
 
@@ -70,8 +150,29 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            gate.datetime = new Date();
-            await this.doEditGate(stub, gate);
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            await this.doEditGate(stub, gateIn);
+        } catch (err) {
+            throw new Error(err);
+        }
+    }
+
+    /* methods POST */
+    /* editItemType(stub: Stub, itemTypeStr string) */
+    /* The editItemType method is called to update a ItemType */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async editItemType(stub: Stub, itemTypeStr: string) {
+        this.logger.info('************* editGate *************');
+        if (!itemTypeStr) {
+            throw new Error(`editItemType - ERROR: NO ItemType in Input`);
+        }
+        try {
+            let itemType: ItemType = JSON.parse(itemTypeStr);
+            await this.doEditItemType(stub, itemType);
         } catch (err) {
             throw new Error(err);
         }
@@ -132,14 +233,14 @@ export class CollaborativeSorting implements ChaincodeInterface {
      */
 
     public async getGateById(stub: Stub, gateId: string) {
-        this.logger.info('************* getGateById: '+ gateId +' *************');
+        this.logger.info('************* getGateById: ' + gateId + ' *************');
         if (gateId == null || gateId == '') {
             this.logger.error('getGateById ERROR: id is empty or null!');
             throw new Error('getGateById ERROR: id is empty or null!');
         }
         try {
             let keyGate: string = await this.generateKey(stub, 'GATE', gateId);
-            this.logger.debug('GET GATE by id with KEY: '+ keyGate);
+            this.logger.debug('GET GATE by id with KEY: ' + keyGate);
             let gate = await stub.getState(keyGate);
             return Transform.bufferToObject(gate) as Gate;
         } catch (err) {
@@ -200,19 +301,40 @@ export class CollaborativeSorting implements ChaincodeInterface {
      */
 
     public async getItemById(stub: Stub, itemId: string) {
-        this.logger.info('************* getItemById: '+ itemId +'  *************');
+        this.logger.info('************* getItemById: ' + itemId + '  *************');
         if (itemId == null || itemId == '') {
             this.logger.error('getItemById ERROR: id is empty or null!');
             throw new Error('getItemById ERROR: id is empty or null!');
         }
         try {
             let keyItem: string = await this.generateKey(stub, 'ITEM', itemId);
-            this.logger.debug('GET ITEM by id with KEY: '+ keyItem);
+            this.logger.debug('GET ITEM by id with KEY: ' + keyItem);
             let item = await stub.getState(keyItem);
             return Transform.bufferToObject(item) as Item;
         } catch (err) {
             this.logger.error('getItemById ERROR: Item not found with this id: ' + itemId);
             return new Error('getItemById ERROR: ' + err);
+        }
+    }
+
+    /* methods GET */
+    /* getItemsType(stub: Stub) */
+    /* The getItemsType method is called to GET all ItemsType */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+
+    public async getItemsType(stub: Stub) {
+        this.logger.info('************* getItems *************');
+        try {
+            let iterator = await stub.getStateByPartialCompositeKey('ITEMTYPE', []);
+            let itemsType = await Transform.iteratorToObjectList(iterator);
+            return itemsType;
+        } catch (err) {
+            this.logger.error('getItemsType ERROR code: ' + err);
+            return new Error('getItemsType ERROR: ' + err);
         }
     }
 
@@ -267,9 +389,10 @@ export class CollaborativeSorting implements ChaincodeInterface {
         };
 
         try {
-            await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
-            await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
-
+            //    await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
+            //    await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
+            await this.doEditItemType(stub, typeA);
+            await this.doEditItemType(stub, typeB);
         } catch (err) {
             this.logger.error('INIT - ERROR: Something wrong in put State of types ' + err);
             throw new Error('INIT - ERROR: Something wrong in put State of types ' + err);
@@ -277,39 +400,41 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         /* INIT 10 gates initial (with precerence) */
         // @FIXME Use Loop for repetitive tasks
-        let gateZero = new Gate('0', '0', 0, true, 0, new Date());
+
+        // (id: string, idConnectedBay:string, load:number, enable:boolean, position:number, datetime:Date) {
+        let gateZero = new Gate('0', '0', 0, true, '0', new Date());
         gateZero.addPreference(typeA);
         gateZero.addPreference(typeB);
 
-        let gateOne = new Gate('1', '2', 0, true, 5, new Date());
+        let gateOne = new Gate('1', '2', 0, true, '5', new Date());
         gateOne.addPreference(typeA);
         gateOne.addPreference(typeB);
 
-        let gateTwo = new Gate('2', '4', 0, true, 10, new Date());
+        let gateTwo = new Gate('2', '4', 0, true, '10', new Date());
         gateTwo.addPreference(typeA);
         gateTwo.addPreference(typeB);
 
-        let gateThree = new Gate('3', '6', 0, true, 15, new Date());
+        let gateThree = new Gate('3', '6', 0, true, '15', new Date());
         gateThree.addPreference(typeA);
         gateThree.addPreference(typeB);
 
-        let gateFor = new Gate('4', '8', 0, true, 20, new Date());
-        gateFor.addPreference(typeB);
+        let gateFour = new Gate('4', '8', 0, true, '20', new Date());
+        gateFour.addPreference(typeB);
 
-        let gateFive = new Gate('5', '10', 0, true, 25, new Date());
+        let gateFive = new Gate('5', '10', 0, true, '25', new Date());
         gateFive.addPreference(typeA);
 
-        let gateSix = new Gate('6', '12', 0, true, 30, new Date());
+        let gateSix = new Gate('6', '12', 0, true, '30', new Date());
         gateSix.addPreference(typeB);
 
-        let gateSeven = new Gate('7', '14', 0, true, 35, new Date());
+        let gateSeven = new Gate('7', '14', 0, true, '35', new Date());
         gateSeven.addPreference(typeA);
 
-        let gateEight = new Gate('8', '16', 0, true, 40, new Date());
+        let gateEight = new Gate('8', '16', 0, true, '40', new Date());
         gateEight.addPreference(typeA);
         gateEight.addPreference(typeB);
 
-        let gateNine = new Gate('9', '18', 0, true, 45, new Date());
+        let gateNine = new Gate('9', '18', 0, true, '45', new Date());
         gateNine.addPreference(typeA);
         gateNine.addPreference(typeB);
 
@@ -318,7 +443,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             await this.doEditGate(stub, gateOne);
             await this.doEditGate(stub, gateTwo);
             await this.doEditGate(stub, gateThree);
-            await this.doEditGate(stub, gateFor);
+            await this.doEditGate(stub, gateFour);
             await this.doEditGate(stub, gateFive);
             await this.doEditGate(stub, gateSix);
             await this.doEditGate(stub, gateSeven);
@@ -337,7 +462,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 let item = itemElem as Item;
                 try {
                     let keyItem = await this.generateKey(stub, 'ITEM', item.id);
-                    this.logger.debug('PUT ITEM by id with KEY: '+ keyItem + '<- ');
+                    this.logger.debug('PUT ITEM by id with KEY: ' + keyItem + '<- ');
                     await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
                 } catch (err) {
                     this.logger.error('INIT - ERROR: Something wrong in put State of gate ' + err);
@@ -403,7 +528,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             // let payload = await method.call(this, this.getStubHelperFor(stub), params);
             // ascatox Using this.getStubHelper is impossible to test :-(
             let arg: String = '';
-            if (params && params[0]){
+            if (params && params[0]) {
                 arg = params[0];
             }
             let payload = await method.call(this, stub, arg);
@@ -441,6 +566,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
      *
      * @param stub
      */
+
     private async controlGates(stub: Stub) {
         this.logger.info('############################## ATTENTION ##########################');
         this.logger.info('##########  TO DO Insert controlGates in storeItem Method #########');
@@ -557,13 +683,91 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info('########### insertGateIntoTheLedger : ' + gate.id + ' ###########');
 
         try {
+            mapPosGate.set(gate.position, gate.id);
             let keyGate = await this.generateKey(stub, 'GATE', gate.id);
-            this.logger.debug('PUT GATE by id with KEY: '+ keyGate + '<- ');
+            this.logger.debug('PUT GATE by id with KEY: ' + keyGate + '<- ');
             await stub.putState(keyGate, Buffer.from(JSON.stringify(gate)));
         } catch (err) {
             this.logger.error('doEditGate - ERROR: Something wrong in put State of gate ' + err);
             this.logger.error('doEditGate - GATE id: ' + gate.id);
             throw new Error('doEditGate - ERROR: Something wrong in put State of bay ' + err);
+        }
+    }
+
+
+
+    /* doEditPreference */
+    /* The doEditPreference method is called to insert itemType in preferences if necessary */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    private async doEditPreference(stub: Stub, gate: Gate) {
+        this.logger.info('########### doEditPreference : ' + gate.payload.acceptedProduct + ' ###########');
+
+        let isPresent: Boolean = false;
+        for (let it of gate.preference) {
+            if (it.id === gate.payload.acceptedProduct) {
+                isPresent = true;
+            }
+            if (!isPresent) {
+                let itemType = new ItemType(gate.payload.acceptedProduct, ''); 
+                gate.addPreference(itemType);
+            }
+        }
+        return gate;
+
+    }
+
+
+
+
+
+    /* doCreateEvent */
+    /* The doCreateEvent method is called to create a Event */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+
+    private async doCreateEvent(stub: Stub, funct: string, gate: Gate) {
+        this.logger.info('########### doCreateEvent ###########');
+        if (funct == null || (funct != 'storeBay' && funct != 'updateBay' && funct != 'removeBay')) {
+            this.logger.error('doCreateEvent ERROR: funct is empty or not valid value: ' + funct);
+            throw new Error('doCreateEvent ERROR: id is empty or not valid value: ' + funct);
+        }
+        try {
+            let event = new Event(gate.idConnectedBay, gate.position, gate.payload);
+            let eventContainer = new EventContainer(funct, event);
+            stub.setEvent('EVENT', Buffer.from(JSON.stringify(eventContainer)));
+        }
+        catch (err) {
+            this.logger.error('doCreateEvent - ERROR: Something wrong in Event construction ' + err);
+            throw new Error('doCreateEvent - ERROR: Something wrong in Event construction ' + err);
+        }
+    }
+
+    /* methods POST */
+    /* doEditItemType */
+    /* The doEditItemType method is called to  Write (insert or update) the itemType into the Ledger */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    private async doEditItemType(stub: Stub, itemType: ItemType) {
+        this.logger.info('########### insertItemGateIntoTheLedger ###########');
+
+        try {
+            let keyItemType = await this.generateKey(stub, 'ITEMTYPE', itemType.id);
+            this.logger.debug('PUT ITEMTYPE by id with KEY: ' + keyItemType + '<- ');
+            await stub.putState(keyItemType, Buffer.from(JSON.stringify(itemType)));
+        } catch (err) {
+            this.logger.error('doEditItemType - ERROR: Something wrong in put State of itemType ' + err);
+            this.logger.error('doEditItemType - ITEMTYPE id: ' + itemType.id);
+            throw new Error('doEditItemType - ERROR: Something wrong in put State of itemType ' + err);
         }
     }
 
@@ -589,20 +793,30 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
     private async doGrabItem(stub: Stub, item: Item) {
-        this.logger.info('########### doGrabItem ###########');
+        this.logger.info('########### doGrabItem id: ' + item.id + ' ###########');
         let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
         let gates = await Transform.iteratorToObjectList(iterator);
         for (let gate of gates) {
-            let exitGate = gate as Gate;
-            if (exitGate.enable && exitGate.idConnectedBay != null) {
+            let gat = gate as Gate;
+            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
+            exitGate.items = gat.items;
+
+            this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id);
+            this.logger.debug('doGrabItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
+            this.logger.debug('doGrabItem - Gate with exitGate.items.length: ' + exitGate.items.length);
+
+            if (exitGate.enable && exitGate.idConnectedBay != null && exitGate.items != null && exitGate.items.length != 0) {
                 let isFound = false;
+                this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' has items not null: ' + exitGate.items.length);
                 for (let itemOfGate of exitGate.items) {
-                    if (item.id === itemOfGate.id) {
+                    if (item.id == itemOfGate.id) {
+                        this.logger.debug('doGrabItem - Item with id: ' + item.id + ' found into Gate: ' + exitGate.id);
                         isFound = true;
                         try {
                             /* remove the item from the list items assigned to the Gate exitGate and update the Gate */
                             exitGate.removeItem(itemOfGate);
                             await this.doEditGate(stub, exitGate);
+                            this.logger.debug('doGrabItem - Post editGate method: ' + exitGate.id);
                         } catch (err) {
                             this.logger.error('doGrabItem - ERROR in call doEditGate: itemOfGate.id: ' + itemOfGate.id);
                             throw new Error('doGrabItem - doEditGate ERROR with code: ' + err);
@@ -617,7 +831,6 @@ export class CollaborativeSorting implements ChaincodeInterface {
                             this.logger.error('doGrabItem - ERROR in call doDeleteItem: item.id: ' + item.id);
                             throw new Error('doGrabItem - doDeleteItem ERROR with code: ' + err);
                         }
-
                     }
                 }
                 if (!isFound) {
@@ -651,7 +864,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
     }
 
     private async  generateKey(stub: Stub, type: string, id: string) {
-         this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
+        this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
         return stub.createCompositeKey(type, [id]);
     }
     /*

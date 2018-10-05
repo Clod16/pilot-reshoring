@@ -58,7 +58,7 @@ describe('Test Mockstub', () => {
         const args = ['arg1', 'arg2'];
         await stub.mockInit('test', args);
                           
-        const bay: Gate = new Gate('1', '10', 0, true, 1, new Date());
+        const bay: Gate = new Gate('1', '10', 0, true, '1', new Date());
 
         const response: ChaincodeResponse = await stub.mockInvoke('test', ['editGate', JSON.stringify(bay)]);
         expect(response.status).to.deep.equal(200);
