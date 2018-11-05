@@ -2,7 +2,7 @@
 ## Entity Model:
 
 # Class Item
-`public class Item {private String   typeObject = "ITEM";    
+`public class Item {private String   typeObject = "ITEM";     
                     private String   id;
                     private Boolean  inLoop;
                     private ItemType type;
