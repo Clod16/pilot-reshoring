@@ -2,14 +2,14 @@
 ## Entity Model:
 
 # Class Item
-'''
+```
 public class Item {private String   typeObject = "ITEM";     
                     private String   id;   
                     private Boolean  inLoop; 
                     private ItemType type; 
                     private Integer  position; 
                     }
-'''
+```
 # Class Gate
 `ublic class Gate {private String         typeObject = "GATE";
                    private String         id;
