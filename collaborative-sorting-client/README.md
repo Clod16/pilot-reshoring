@@ -11,36 +11,41 @@ public class Item {private String   typeObject = "ITEM";
                     }
 ```
 # Class Gate
-`ublic class Gate {private String         typeObject = "GATE";
-                   private String         id;
-                   private String         idConnectedBay;
-                   private Double         load;
-                   private List<ItemType> preference;
-                   private Boolean        enable;
-                   private String         position;
-                   private List<Item>     items;
-                   private Date           datetime;
-                   private Payload        payload;
+```
+public class Gate {private String         typeObject = "GATE"; 
+                   private String         id; 
+                   private String         idConnectedBay; 
+                   private Double         load; 
+                   private List<ItemType> preference; 
+                   private Boolean        enable; 
+                   private String         position; 
+                   private List<Item>     items; 
+                   private Date           datetime; 
+                   private Payload        payload; 
                    }
-`
+```
 # Class ItemType
-`public class ItemType {private String id;
+```
+public class ItemType {private String id;
                         private String description;
                         }
-`
+```
 # Class Event
-`public class Event {private String idBay;
+```
+public class Event {private String idBay;
                      private String position;
                      private String payload;
                      }
-`
+```
 # Class EventContainer
-`public class EventContainer {private String eventType;
+```
+public class EventContainer {private String eventType;
                               private Event event;
                               }
-`
+```
 # Class Payload
-`public class Payload {private String producer;
+```
+public class Payload {private String producer;
                        private String type;
                        private String pushQuantity;
                        private String speed;
@@ -51,7 +56,7 @@ public class Item {private String   typeObject = "ITEM";
                        private String motorVoltage;
                        private String acceptedProduct;
                        }
-`
+```
  
 ## POST Methods: 
 # storeItem   
