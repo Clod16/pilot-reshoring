@@ -54,6 +54,10 @@ export class CollaborativeSorting implements ChaincodeInterface {
             throw new Error('storeItem in assigne function - ERROR with code: ' + err);
         }
         try {
+            let itemFound = this.getItemById(stub, item.id);
+            if (itemFound != null) {
+                this.logger.warn('storeItem - WARNING: Item in Input is already present!!!');
+            }
             let keyItem = await this.generateKey(stub, 'ITEM', item.id);
             this.logger.info('PUT ITEM by id with KEY: ' + keyItem + '<- ');
             await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
@@ -77,11 +81,22 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
-            if (gate.payload != null) {
-                gateIn.payload = gate.payload;
-                gateIn = await this.doEditPreference(stub, gateIn);
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date())
+            if (gate.preference != null) {
+                gateIn.preference = gate.preference;
             }
+            if (gate.payload != null) {
+                this.logger.info('storeBay - call doEditPreference with this payload:'+ gate.payload);
+                gateIn.payload = gate.payload;
+                if (gateIn.payload.acceptedProduct != null && gateIn.payload.acceptedProduct != '') {
+                    this.logger.info('storeBay - call doEditPreference with this acceptedProduct:'+ gateIn.payload.acceptedProduct);
+                    gateIn = await this.doEditPreference(stub, gateIn);
+                }
+            }
+            if (gate.items != null && gate.items != []) {
+                gateIn.items = gate.items;
+            }
+
             await this.doEditGate(stub, gateIn);
             await this.doCreateEvent(stub, 'storeBay', gateIn);
         } catch (err) {
@@ -103,14 +118,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             throw new Error(`updateBay - ERROR: NO Gate in Input`);
         }
         try {
-            let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
-            if (gate.payload != null) {
-                gateIn.payload = gate.payload;
-                gateIn = await this.doEditPreference(stub, gateIn);
-            }
-            await this.doEditGate(stub, gateIn);
-            await this.doCreateEvent(stub, 'updateBay', gateIn);
+            await this.storeBay(stub, gateStr);
         } catch (err) {
             throw new Error(err);
         }
@@ -156,6 +164,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
         try {
             let gate: Gate = JSON.parse(gateStr);
             let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            if (gate.preference != null) {
+                gateIn.preference = gate.preference;
+            }
+            if (gate.payload != null) {
+                gateIn.payload = gate.payload;
+            }
+            if (gate.items != null && gate.items != []) {
+                gateIn.items = gate.items;
+            }
             await this.doEditGate(stub, gateIn);
         } catch (err) {
             throw new Error(err);
@@ -317,8 +334,34 @@ export class CollaborativeSorting implements ChaincodeInterface {
             let item = await stub.getState(keyItem);
             return Transform.bufferToObject(item) as Item;
         } catch (err) {
-            this.logger.error('getItemById ERROR: Item not found with this id: ' + itemId);
-            return new Error('getItemById ERROR: ' + err);
+            this.logger.warn('getItemById WARNING: Item not found with this id: ' + itemId);
+            throw new Error('getItemById ERROR: item not found!');
+        }
+    }
+
+    /* methods GET */
+    /* getItemTypeById(stub: Stub, id: string) */
+    /* The getItemTypeById method is called to GET the itemType with this id */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+
+    public async getItemTypeById(stub: Stub, itemTypeId: string) {
+        this.logger.info('************* getItemTypeById: ' + itemTypeId + '  *************');
+        if (itemTypeId == null || itemTypeId == '') {
+            this.logger.error('getItemTypeById ERROR: id is empty or null!');
+            throw new Error('getItemTypeById ERROR: id is empty or null!');
+        }
+        try {
+            let keyItemType: string = await this.generateKey(stub, 'ITEMTYPE', itemTypeId);
+            this.logger.debug('GET ITEMTYPE by id with KEY: ' + keyItemType);
+            let itemType = await stub.getState(keyItemType);
+            return Transform.bufferToObject(itemType) as ItemType;
+        } catch (err) {
+            this.logger.error('getItemTypeById ERROR: Item not found with this id: ' + itemTypeId);
+            return new Error('getItemTypeById ERROR: ' + err);
         }
     }
 
@@ -479,7 +522,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
 
         // In INIT all Items must have state null
-        let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
+ /*       let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
         let items = await Transform.iteratorToObjectList(iterator);
         if (items != null) {
             for (let itemElem of items) {
@@ -487,14 +530,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 try {
                     let keyItem = await this.generateKey(stub, 'ITEM', item.id);
                     this.logger.debug('PUT ITEM by id with KEY: ' + keyItem + '<- ');
-                    await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
+                    await this.storeItem(stub, JSON.stringify(item));
+                    // await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
                 } catch (err) {
-                    this.logger.error('INIT - ERROR: Something wrong in put State of gate ' + err);
+                    this.logger.error('INIT - ERROR: Something wrong in put State of item ' + err);
                     throw new Error('INIT - ERROR: Something wrong in put State of item ' + err);
                 }
             }
         }
-
+*/
         // @FIXME Use Loop for repetitive tasks
         return await this.executeMethod('init', args, stub, true);
     }
@@ -662,10 +706,13 @@ export class CollaborativeSorting implements ChaincodeInterface {
                         this.logger.debug('assignItemToGate - GATE LOAD       : ' + exitGate.load);
                     }
                 } else {
-                    this.logger.debug('assignItemToGate - GATE DISABLED       : ' + exitGate.id);
+                    this.logger.debug('assignItemToGate - GATE NOT READY - ID    : ' + exitGate.id);
+                    this.logger.debug('assignItemToGate - GATE NOT READY - ENA   : ' + exitGate.enable);
+                    this.logger.debug('assignItemToGate - GATE NOT READY - BAY   : ' + exitGate.idConnectedBay);
                 }
             }
-
+            this.logger.debug('assignItemToGate - For Item with id: ' + item.id + ' + GATE COMPATIBLE IS (number): ' + gatesCompatible.length);
+            this.logger.debug('assignItemToGate - For Item with id: ' + item.id + ' + GATE AVAILABLE IS (number) : ' + gatesAvailable.length);
             if (gatesCompatible.length != 0) {
                 if (gatesCompatible.length != 1) {
                     this.OrderByArray(gatesCompatible, 'load');
@@ -734,8 +781,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 isPresent = true;
             }
         }
-        if (!isPresent) {
+        if (!isPresent && gate.payload.acceptedProduct != null) {
             let itemType = new ItemType(gate.payload.acceptedProduct, ''); 
+            await this.doEditItemType(stub, itemType);
             gate.addPreference(itemType);
         }
         return gate;
@@ -816,7 +864,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
         for (let gate of gates) {
             let gat = gate as Gate;
             let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
-            exitGate.items = gat.items;
+            if (gat.preference != null) {
+                exitGate.preference = gat.preference;
+            }
+            if (gat.payload != null) {
+                exitGate.payload = gat.payload;
+            }
+            if (gat.items != null && gat.items != []) {
+                exitGate.items = gat.items;
+            }
 
             this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id);
             this.logger.debug('doGrabItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
@@ -826,6 +882,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 let isFound = false;
                 this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' has items not null: ' + exitGate.items.length);
                 for (let itemOfGate of exitGate.items) {
+                    this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' contains item with id: ' + itemOfGate.id);
                     if (item.id == itemOfGate.id) {
                         this.logger.debug('doGrabItem - Item with id: ' + item.id + ' found into Gate: ' + exitGate.id);
                         isFound = true;
@@ -854,6 +911,60 @@ export class CollaborativeSorting implements ChaincodeInterface {
                     this.logger.error('doGrabItem - ERROR: item not found in any gate');
                     this.logger.error('doGrabItem - ITEM id: ' + item.id);
                     throw new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+
+    
+    /* methods POST */
+    /* doGetGateByItem */
+    /* The doGetGateByItem method is called to Search the Gate assigned to item*/
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    private async doGetGateByItem(stub: Stub, item: Item) {
+        this.logger.info('########### doGetGateByItem id: ' + item.id + ' ###########');
+        let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
+        let gates = await Transform.iteratorToObjectList(iterator);
+        for (let gate of gates) {
+            let gat = gate as Gate;
+            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
+            if (gat.preference != null) {
+                exitGate.preference = gat.preference;
+            }
+            if (gat.payload != null) {
+                exitGate.payload = gat.payload;
+            }
+            if (gat.items != null && gat.items != []) {
+                exitGate.items = gat.items;
+            }
+
+            this.logger.debug('doGetGateByItem - Search into Gate with id: ' + exitGate.id);
+            this.logger.debug('doGetGateByItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
+            this.logger.debug('doGetGateByItem - Gate with exitGate.items.length: ' + exitGate.items.length);
+
+            if (exitGate.enable && exitGate.idConnectedBay != null && exitGate.items != null && exitGate.items.length != 0) {
+                let isFound = false;
+                this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' has items not null: ' + exitGate.items.length);
+                for (let itemOfGate of exitGate.items) {
+                    if (item.id == itemOfGate.id) {
+                        this.logger.debug('doGrabItem - Item with id: ' + item.id + ' found into Gate: ' + exitGate.id);
+                        isFound = true;
+                        
+                    }
+                }
+                if (!isFound) {
+                    this.logger.error('doGrabItem - ERROR: item not found in any gate');
+                    this.logger.error('doGrabItem - ITEM id: ' + item.id);
+                    throw new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
+                } else {
+                    return exitGate;;
                 }
             }
         }
