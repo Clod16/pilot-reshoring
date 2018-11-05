@@ -1,0 +1,46 @@
+{
+  "name": "fabric-network",
+  "type": "hlfv1.2",
+  "channelName": "ledgerchannel",
+  "timeout": 5000,
+  "cryptoconfigdir": "C:/Users/alberti/Sviluppo/crypto-config",
+  "tls": false,
+  "chaincode": {
+    "path": "collaborative-sorting",
+    "name": "collaborative-sorting",
+    "version": "11.0",
+    "lang":"NODE"
+  },
+  "organizations": [
+    {
+      "domainName": "org1.example.com",
+      "mspID": "Org1MSP",
+      "peers": [
+        {
+          "name": "peer0.org1.example.com",
+          "requestURL": "grpc://localhost:7051",
+          "eventURL": "grpc://localhost:7053"
+        }
+      ],
+      "ca": {
+        "url": "http://localhost:7054",
+        "name": "ca.example.com"
+      },
+      "orderers": [
+        {
+          "name": "orderer.example.com",
+          "url": "grpc://localhost:7050"
+        }
+      ],
+      "users": [
+        {
+          "name": "Admin",
+          "secret":"",
+          "roles": [
+            "admin"
+          ]
+        }
+      ]
+    }
+  ]
+}
