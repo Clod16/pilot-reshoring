@@ -10,6 +10,7 @@ import org.hyperledger.fabric.sdk.ChaincodeEvent;
 import org.hyperledger.fabric.sdk.ChaincodeEventListener;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -254,8 +255,7 @@ public class End2EndTest {
         return rand.nextInt(100);
     }
 
-    /*
-
+    @Ignore
     @Test
     public void integrationTest() {
         ItemType itemTypeA = new ItemType("869990965260", "Type0");
@@ -275,7 +275,7 @@ public class End2EndTest {
             System.out.println("DOPO secondo store Item");
             ArrayList<Item> items = new ArrayList<Item>();
             System.out.println("DOPO creazione Array items");
-            items =(ArrayList<Item>) fabricCollaborativeSortingLedgerClient.getItems();
+            items = (ArrayList<Item>) fabricCollaborativeSortingLedgerClient.getItems();
             System.out.println("DOPO getItems");
             ArrayList<Gate> gates = new ArrayList<Gate>();
             System.out.println("DOPO creazione Array gates");
@@ -315,7 +315,7 @@ public class End2EndTest {
             System.out.println("ITEM 1: " + item.toString());
 
             items = (ArrayList<Item>) fabricCollaborativeSortingLedgerClient.getItemsByGate("0");
-            for (Item it: items) {
+            for (Item it : items) {
                 System.out.println("ITEMs trovati in GATE 0 itemId: " + it.getId());
                 fabricCollaborativeSortingLedgerClient.grabItemIntoGate(it);
                 System.out.println("ITEMs grabbato in GATE 0: " + it.getId());
@@ -326,7 +326,7 @@ public class End2EndTest {
             }
 
             items = (ArrayList<Item>) fabricCollaborativeSortingLedgerClient.getItemsByGate("1");
-            for (Item it: items
+            for (Item it : items
                     ) {
                 System.out.println("ITEMs trovati in GATE 1: " + it.getId());
             }
@@ -356,7 +356,7 @@ public class End2EndTest {
         } catch (JLedgerClientException e) {
             assertFalse(e.getMessage(), true);
         }
-    } */
+    }
 }
 
 
