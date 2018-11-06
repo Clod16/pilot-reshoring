@@ -8,7 +8,7 @@
   "chaincode": {
     "path": "collaborative-sorting",
     "name": "collaborative-sorting",
-    "version": "11.0",
+    "version": "12.1",
     "lang":"NODE"
   },
   "organizations": [

@@ -51,7 +51,14 @@ public class End2EndTest {
     @Test
     public void testStoreGate() {
         final Gate gateTest = buildGate();
+    //    final Item itemtest = buildItem();
         try {
+            // RETTIFICA
+        //    itemtest.setId("alpha14");
+        //    ArrayList<Item> items = new ArrayList<Item>();
+        //    items.add(itemtest);
+        //    gateTest.setItems(items);
+            // RETTIFICA
             fabricCollaborativeSortingLedgerClient.editGate(gateTest);
             Gate gateLedger = fabricCollaborativeSortingLedgerClient.getGateById(gateTest.getId());
             assertEquals(gateTest, gateLedger);
@@ -145,13 +152,12 @@ public class End2EndTest {
     public void testGrabItem() {
         try {
             final Item itemTest = buildItem();
-            itemTest.setId("alpha14");
             fabricCollaborativeSortingLedgerClient.storeItem(itemTest);
             ArrayList<Item> items = (ArrayList<Item>) fabricCollaborativeSortingLedgerClient.getItems();
             System.out.println("Number of Item in the Ledger: " + items.size());
 
             if (items.size() != 0) {
-                Item item = items.get(0);
+                Item item = items.get(2);
                 String ide = item.getId();
                 fabricCollaborativeSortingLedgerClient.grabItemIntoGate(item);
                 fabricCollaborativeSortingLedgerClient.getItemById(ide);

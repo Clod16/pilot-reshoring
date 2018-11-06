@@ -861,6 +861,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info('########### doGrabItem id: ' + item.id + ' ###########');
         let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
         let gates = await Transform.iteratorToObjectList(iterator);
+        let isFound = false;
         for (let gate of gates) {
             let gat = gate as Gate;
             let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
@@ -873,13 +874,13 @@ export class CollaborativeSorting implements ChaincodeInterface {
             if (gat.items != null && gat.items != []) {
                 exitGate.items = gat.items;
             }
-
+            
             this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id);
             this.logger.debug('doGrabItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
             this.logger.debug('doGrabItem - Gate with exitGate.items.length: ' + exitGate.items.length);
 
-            if (exitGate.enable && exitGate.idConnectedBay != null && exitGate.items != null && exitGate.items.length != 0) {
-                let isFound = false;
+            if (!isFound && exitGate.enable && exitGate.idConnectedBay != null && exitGate.items != null && exitGate.items.length != 0) {
+                
                 this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' has items not null: ' + exitGate.items.length);
                 for (let itemOfGate of exitGate.items) {
                     this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' contains item with id: ' + itemOfGate.id);
@@ -907,14 +908,12 @@ export class CollaborativeSorting implements ChaincodeInterface {
                         }
                     }
                 }
-                if (!isFound) {
-                    this.logger.error('doGrabItem - ERROR: item not found in any gate');
-                    this.logger.error('doGrabItem - ITEM id: ' + item.id);
-                    throw new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
-                } else {
-                    break;
-                }
             }
+        }
+        if (!isFound) {
+            this.logger.error('doGrabItem - ERROR: item not found in any gate');
+            this.logger.error('doGrabItem - ITEM id: ' + item.id);
+            throw new Error('doGrabItem - ERROR: ITEM id: ' + item.id + ' not found in any gate');
         }
     }
 
