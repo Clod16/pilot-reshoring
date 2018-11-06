@@ -75,7 +75,7 @@ _The storeBay method is called to insert a new Bay in a Gate_
 _The updateGate method is called to change the data of a Bay in a Gate_ 
 
 
-#removeBay  
+# removeBay  
 - public async removeBay(stub: Stub, gateStr: string)   
 _The removeGate method is called to remove a Bay from a Gate_
 
