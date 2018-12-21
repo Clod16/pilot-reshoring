@@ -9,6 +9,7 @@ import { ItemType } from './ItemType';
 import { Item } from './Item';
 import { Event } from './Event';
 import { EventContainer } from './EventContainer';
+import { Payload } from './Payload';
 
 /* Map for position - gate to search easily the gate associated when will be connect a new Bay */
 let mapPosGate = new Map();
@@ -46,14 +47,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         const item: Item = JSON.parse(itemStr);
         try {
-            await this.controlGates(stub);
+            // TO DO Create version PROD and version DEV (This version not run)
+            // await this.controlGates(stub);
             await this.assignItemToGate(stub, item);
         } catch (err) {
             throw new Error('storeItem in assigne function - ERROR with code: ' + err);
         }
         try {
             let itemFound = this.getItemById(stub, item.id);
-            if (typeof itemFound !== 'undefined' && itemFound != null) {
+            if (typeof itemFound !== 'undefined' &&  itemFound != null) {
                 this.logger.warn('storeItem - WARNING: Item in Input is already present!!!');
             }
             let keyItem = await this.generateKey(stub, 'ITEM', item.id);
@@ -79,15 +81,15 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date())
             if (gate.preference != null) {
                 gateIn.preference = gate.preference;
             }
             if (gate.payload != null) {
-                this.logger.info('storeBay - call doEditPreference with this payload:' + gate.payload);
+                this.logger.info('storeBay - call doEditPreference with this payload:'+ gate.payload);
                 gateIn.payload = gate.payload;
                 if (gateIn.payload.acceptedProduct != null && gateIn.payload.acceptedProduct != '') {
-                    this.logger.info('storeBay - call doEditPreference with this acceptedProduct:' + gateIn.payload.acceptedProduct);
+                    this.logger.info('storeBay - call doEditPreference with this acceptedProduct:'+ gateIn.payload.acceptedProduct);
                     gateIn = await this.doEditPreference(stub, gateIn);
                 }
             }
@@ -96,7 +98,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             }
 
             await this.doEditGate(stub, gateIn);
-            await this.doCreateEvent(stub, 'storeBay', gateIn, null);
+            await this.doCreateEvent(stub, 'storeBay', gateIn);
         } catch (err) {
             throw new Error(err);
         }
@@ -140,41 +142,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             let gateIn = new Gate(gate.id, null, 0, false, gate.position, new Date());
             gateIn.payload = null;
             await this.doEditGate(stub, gateIn);
-            await this.doCreateEvent(stub, 'removeBay', gateIn, null);
-        } catch (err) {
-            throw new Error(err);
-        }
-    }
-
-    /* methods POST */
-    /* heartbeat(stub: Stub, gate string) */
-    /* The heartbeat method is called to keep on a Gate */
-    /**
-     * Handle custom method execution
-     *
-     * @param stub
-     */
-    public async heartbeat(stub: Stub, gateStr: string) {
-        this.logger.info('************* heartbeat *************');
-        if (!gateStr) {
-            throw new Error(`heartbeat - ERROR: NO Gate in Input`);
-        }
-        try {
-            let gate: Gate = JSON.parse(gateStr);
-            this.logger.info('************* heartbeat for GATE: ' + gate.id +'*************');
-
-            let keyGate: string = 'GATE'+ gate.id;
-            this.logger.debug('GET GATE (gatState) by id with KEY: ' + keyGate);
-            
-            let gateLedger = await stub.getState(keyGate);
-            let gateReturn = Transform.bufferToObject(gateLedger) as Gate;
-            // let gateLedger = await this.getGateById(stub, gate.id);
-            this.logger.info('************* GATELEDGER SEARCHED: ' + gateReturn.id +'*************');
-            if (typeof gateReturn == 'undefined' || gateReturn == null) {
-                throw new Error(`heartbeat - ERROR: Gate not found: ` + gateReturn.id);
-            }
-            gateReturn.datetime = new Date();
-            await this.doEditGate(stub, gateReturn);
+            await this.doCreateEvent(stub, 'removeBay', gateIn);
         } catch (err) {
             throw new Error(err);
         }
@@ -270,12 +238,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         try {
             let keyGate: string = await this.generateKey(stub, 'GATE', gateId);
             let gate = await stub.getState(keyGate);
-            const gateObj = (Transform.bufferToObject(gate) as Gate);
-            let items = Array<Item>();
-            if (gateObj && gateObj.items) {
-                items = gateObj.items;
-            }
-            return items;
+            return (Transform.bufferToObject(gate) as Gate).items;
         } catch (err) {
             this.logger.error('getItemsByGate ERROR for gate.id: ' + gateId + ' with code error: ' + err);
             throw new Error('getItemsByGate ERROR: ' + err);
@@ -304,8 +267,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             return Transform.bufferToObject(gate) as Gate;
         } catch (err) {
             this.logger.error('getGateById ERROR: Gate not found with this id: ' + gateId);
-            throw new Error('getGateById ERROR: ' + err);
-            // return new Error('getGateById ERROR: ' + err);
+            return new Error('getGateById ERROR: ' + err);
         }
     }
 
@@ -463,61 +425,59 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         /* Init method initializes a List of Bay (allBays) and a List of Type (allTypes)  */
         /* INIT 2 types initial (869990965260, 869990965261) */
-        // DA QUI
-        /*        let typeA: ItemType = {
-                    id: '869990965260',
-                    description: ''
-                };
-        
-                let typeB: ItemType = {
-                    id: '869990965261',
-                    description: ''
-                };
-        
-                try {
-                    //    await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
-                    //    await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
-                    await this.doEditItemType(stub, typeA);
-                    await this.doEditItemType(stub, typeB);
-                } catch (err) {
-                    this.logger.error('INIT - ERROR: Something wrong in put State of types ' + err);
-                    throw new Error('INIT - ERROR: Something wrong in put State of types ' + err);
-                }
-                A QUI */
+
+        let typeA: ItemType = {
+            id: '869990965260',
+            description: ''
+        };
+
+        let typeB: ItemType = {
+            id: '869990965261',
+            description: ''
+        };
+
+        try {
+            //    await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
+            //    await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
+            await this.doEditItemType(stub, typeA);
+            await this.doEditItemType(stub, typeB);
+        } catch (err) {
+            this.logger.error('INIT - ERROR: Something wrong in put State of types ' + err);
+            throw new Error('INIT - ERROR: Something wrong in put State of types ' + err);
+        }
+
         /* INIT 10 gates initial (with precerence) */
         // @FIXME Use Loop for repetitive tasks
 
         /* (producer: string, type:string, pushQuantity:string, speed:string, temperature:string, length:string,
             width:string, motorFrequency:string, motorVoltage: string, acceptedProduct:string) */
-        /* QUI let payloadDefault = new Payload('Interroll', 'NST21550', '5', '1', '22', '500', '300', '60', '230', ''); */
-
+        let payloadDefault = new Payload('Interroll','NST21550','5','1','22','500','300','60','230','');
+        
         // (id: string, idConnectedBay:string, load:number, enable:boolean, position:number, datetime:Date) {
-
-        /* DA QUI
         let gateZero = new Gate('0', '0', 0, true, '0', new Date());
         gateZero.addPreference(typeA);
         payloadDefault.acceptedProduct = typeA.id;
-        gateZero.payload = payloadDefault;
-
+        gateZero.payload = payloadDefault; 
+       
         let gateOne = new Gate('1', '2', 0, true, '5', new Date());
         gateOne.addPreference(typeB);
         payloadDefault.acceptedProduct = typeB.id;
-        gateOne.payload = payloadDefault;
+        gateOne.payload = payloadDefault; 
 
         let gateTwo = new Gate('2', '4', 0, true, '10', new Date());
         gateTwo.addPreference(typeB);
         payloadDefault.acceptedProduct = typeB.id;
-        gateTwo.payload = payloadDefault;
+        gateTwo.payload = payloadDefault; 
 
         let gateThree = new Gate('3', '6', 0, true, '15', new Date());
         gateThree.addPreference(typeA);
         payloadDefault.acceptedProduct = typeA.id;
-        gateThree.payload = payloadDefault;
+        gateThree.payload = payloadDefault; 
 
         let gateFour = new Gate('4', '8', 0, true, '20', new Date());
         gateFour.addPreference(typeB);
         payloadDefault.acceptedProduct = typeB.id;
-        gateFour.payload = payloadDefault;
+        gateFour.payload = payloadDefault; 
 
         let gateFive = new Gate('5', '10', 0, true, '25', new Date());
         gateFive.addPreference(typeA);
@@ -527,7 +487,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         let gateSix = new Gate('6', '12', 0, true, '30', new Date());
         gateSix.addPreference(typeB);
         payloadDefault.acceptedProduct = typeB.id;
-        gateSix.payload = payloadDefault;
+        gateSix.payload = payloadDefault; 
 
         let gateSeven = new Gate('7', '14', 0, true, '35', new Date());
         gateSeven.addPreference(typeA);
@@ -542,7 +502,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         let gateNine = new Gate('9', '18', 0, true, '45', new Date());
         gateNine.addPreference(typeB);
         payloadDefault.acceptedProduct = typeB.id;
-        gateNine.payload = payloadDefault;
+        gateNine.payload = payloadDefault; 
 
 
         try {
@@ -560,26 +520,25 @@ export class CollaborativeSorting implements ChaincodeInterface {
             this.logger.error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
             throw new Error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
         }
-        A QUI */
-        // In INIT all Items must have state null
-        /*       let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
-               let items = await Transform.iteratorToObjectList(iterator);
-               if (items != null) {
-                   for (let itemElem of items) {
-                       let item = itemElem as Item;
-                       try {
-                           let keyItem = await this.generateKey(stub, 'ITEM', item.id);
-                           this.logger.debug('PUT ITEM by id with KEY: ' + keyItem + '<- ');
-                           await this.storeItem(stub, JSON.stringify(item));
-                           // await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
-                       } catch (err) {
-                           this.logger.error('INIT - ERROR: Something wrong in put State of item ' + err);
-                           throw new Error('INIT - ERROR: Something wrong in put State of item ' + err);
-                       }
-                   }
-               }
-       */
 
+        // In INIT all Items must have state null
+ /*       let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
+        let items = await Transform.iteratorToObjectList(iterator);
+        if (items != null) {
+            for (let itemElem of items) {
+                let item = itemElem as Item;
+                try {
+                    let keyItem = await this.generateKey(stub, 'ITEM', item.id);
+                    this.logger.debug('PUT ITEM by id with KEY: ' + keyItem + '<- ');
+                    await this.storeItem(stub, JSON.stringify(item));
+                    // await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
+                } catch (err) {
+                    this.logger.error('INIT - ERROR: Something wrong in put State of item ' + err);
+                    throw new Error('INIT - ERROR: Something wrong in put State of item ' + err);
+                }
+            }
+        }
+*/
         // @FIXME Use Loop for repetitive tasks
         return await this.executeMethod('init', args, stub, true);
     }
@@ -686,7 +645,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             let gates = await Transform.iteratorToObjectList(iterator);
             let displayDate: Date = new Date();
             let mill = displayDate.getTime();
-            mill = mill - 60000;
+            mill = mill - 15000;
             // let num = displayDate.setSeconds(displayDate.getSeconds() - 15);
 
             for (let gate of gates) {
@@ -776,7 +735,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             gateSelected.datetime = new Date();
             /* Call the method for insert/update the gate into the ledger */
             await this.doEditGate(stub, gateSelected);
-            await this.doCreateEvent(stub, 'assignItemToGate', gateSelected, item);
+            await this.doCreateEvent(stub, 'assignItemToGate', gateSelected);
             this.logger.info('assignItemToGate - ID ITEM IN LOOP: ' + item.id + ' GATE DESTINATION ASSIGNED: ' + gateSelected.id);
             this.logger.info('assignItemToGate - Load of BAY connected at the GATE PRE-ASSIGNED: ' + gateSelected.load);
         } catch (err) {
@@ -824,7 +783,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             }
         }
         if (!isPresent && gate.payload.acceptedProduct != null) {
-            let itemType = new ItemType(gate.payload.acceptedProduct, '');
+            let itemType = new ItemType(gate.payload.acceptedProduct, ''); 
             await this.doEditItemType(stub, itemType);
             gate.addPreference(itemType);
         }
@@ -840,21 +799,16 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
 
-    private async doCreateEvent(stub: Stub, funct: string, gate: Gate, item: Item) {
+    private async doCreateEvent(stub: Stub, funct: string, gate: Gate) {
         this.logger.info('########### doCreateEvent ###########');
         if (funct == null || (funct != 'storeBay' && funct != 'removeBay' && funct != 'assignItemToGate')) {
             this.logger.error('doCreateEvent ERROR: funct is empty or not valid value: ' + funct);
             throw new Error('doCreateEvent ERROR: id is empty or not valid value: ' + funct);
         }
         try {
-            let event = new Event(gate.idConnectedBay, gate.position, JSON.stringify(gate.payload));
-            if (item) {
-                event.payload = JSON.stringify(item);
-            }
+            let event = new Event(gate.idConnectedBay, gate.position, gate.payload);
             let eventContainer = new EventContainer(funct, event);
-            const payload = JSON.stringify(eventContainer);
-            stub.setEvent('EVENT', Buffer.from(payload));
-            this.logger.info('Event generated with payload: ' + payload);
+            stub.setEvent('EVENT', Buffer.from(JSON.stringify(eventContainer)));
         } catch (err) {
             this.logger.error('doCreateEvent - ERROR: Something wrong in Event construction ' + err);
             throw new Error('doCreateEvent - ERROR: Something wrong in Event construction ' + err);
@@ -921,13 +875,13 @@ export class CollaborativeSorting implements ChaincodeInterface {
             if (gat.items != null && gat.items != []) {
                 exitGate.items = gat.items;
             }
-
+            
             this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id);
             this.logger.debug('doGrabItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
             this.logger.debug('doGrabItem - Gate with exitGate.items.length: ' + exitGate.items.length);
 
             if (!isFound && exitGate.enable && exitGate.idConnectedBay != null && exitGate.items != null && exitGate.items.length != 0) {
-
+                
                 this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' has items not null: ' + exitGate.items.length);
                 for (let itemOfGate of exitGate.items) {
                     this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id + ' contains item with id: ' + itemOfGate.id);
@@ -965,7 +919,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
     }
 
 
-
+    
     /* methods POST */
     /* doGetGateByItem */
     /* The doGetGateByItem method is called to Search the Gate assigned to item*/
@@ -1002,7 +956,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
                     if (item.id == itemOfGate.id) {
                         this.logger.debug('doGrabItem - Item with id: ' + item.id + ' found into Gate: ' + exitGate.id);
                         isFound = true;
-
+                        
                     }
                 }
                 if (!isFound) {
@@ -1039,7 +993,6 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
     private async  generateKey(stub: Stub, type: string, id: string) {
         this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
-        // return stub.createCompositeKey(type, [id]);
-        return type + id;
+        return stub.createCompositeKey(type, [id]);
     }
 }
