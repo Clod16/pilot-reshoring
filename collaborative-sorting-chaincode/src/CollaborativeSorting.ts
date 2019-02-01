@@ -47,17 +47,14 @@ export class CollaborativeSorting implements ChaincodeInterface {
         const item: Item = JSON.parse(itemStr);
         try {
             await this.controlGates(stub);
+            await this.controlItemsNotAssigned(stub);
             await this.assignItemToGate(stub, item);
         } catch (err) {
             throw new Error('storeItem in assigne function - ERROR with code: ' + err);
         }
         try {
-            let itemFound = this.getItemById(stub, item.id);
-            if (typeof itemFound !== 'undefined' && itemFound != null) {
-                this.logger.warn('storeItem - WARNING: Item in Input is already present!!!');
-            }
             let keyItem = await this.generateKey(stub, 'ITEM', item.id);
-            this.logger.info('PUT ITEM by id with KEY: ' + keyItem + '<- ');
+            this.logger.info('storeItem - PUT ITEM by id with KEY ITEM: ' + item.id);
             await stub.putState(keyItem, Buffer.from(JSON.stringify(item)));
         } catch (err) {
             throw new Error('storeItem in putState - ERROR with code: ' + err);
@@ -79,22 +76,17 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, new Date());
             if (gate.preference != null) {
                 gateIn.preference = gate.preference;
             }
             if (gate.payload != null) {
-                this.logger.info('storeBay - call doEditPreference with this payload:' + gate.payload);
                 gateIn.payload = gate.payload;
-                if (gateIn.payload.acceptedProduct != null && gateIn.payload.acceptedProduct != '') {
-                    this.logger.info('storeBay - call doEditPreference with this acceptedProduct:' + gateIn.payload.acceptedProduct);
-                    gateIn = await this.doEditPreference(stub, gateIn);
-                }
             }
             if (gate.items != null && gate.items != []) {
                 gateIn.items = gate.items;
             }
-
+            this.logger.info('storeBay -> CALL doEditGate');
             await this.doEditGate(stub, gateIn);
             await this.doCreateEvent(stub, 'storeBay', gateIn, null);
         } catch (err) {
@@ -137,8 +129,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, null, 0, false, gate.position, new Date());
+            let gateIn = new Gate(gate.id, null, 0, false, new Date());
             gateIn.payload = null;
+            this.logger.info('removeBay -> CALL doEditGate');
             await this.doEditGate(stub, gateIn);
             await this.doCreateEvent(stub, 'removeBay', gateIn, null);
         } catch (err) {
@@ -161,19 +154,35 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            this.logger.info('************* heartbeat for GATE: ' + gate.id +'*************');
+            this.logger.info('************* heartbeat for GATE: ' + gate.id + '*************');
 
-            let keyGate: string = 'GATE'+ gate.id;
-            this.logger.debug('GET GATE (gatState) by id with KEY: ' + keyGate);
-            
+            let keyGate: string = await this.generateKey(stub, 'GATE', gate.id);
+            // let keyGate: string = 'GATE' + gate.id;
+            this.logger.debug('heartbeat - GET GATE (gatState) by id with KEY: GATE ' + gate.id);
             let gateLedger = await stub.getState(keyGate);
+
             let gateReturn = Transform.bufferToObject(gateLedger) as Gate;
+            this.logger.debug('GET GATE (gatState) ITEMS in gateLedger: ' + gateReturn.items.length);
             // let gateLedger = await this.getGateById(stub, gate.id);
-            this.logger.info('************* GATELEDGER SEARCHED: ' + gateReturn.id +'*************');
+            this.logger.info('************* GATELEDGER SEARCHED: ' + gateReturn.id + '*************');
             if (typeof gateReturn == 'undefined' || gateReturn == null) {
                 throw new Error(`heartbeat - ERROR: Gate not found: ` + gateReturn.id);
             }
+
+            // TEMPORARY 
+            let its = Array<Item>();
+            its = await this.getItemsByGate(stub, gate.id);
+            this.logger.debug('heartbeat - GATE IS ON: ' + gate.id);
+            this.logger.debug('heartbeat - NUMBER ITEMS in GATE LEDGER: ' + its.length);
+            for (let itemElem of its) {
+                let item = itemElem as Item;
+                this.logger.debug('heartbeat - ITEMS in GATE LEDGER: ' + item.id);
+            }
+
+
+
             gateReturn.datetime = new Date();
+            this.logger.info('heartbeat -> CALL doEditGate');
             await this.doEditGate(stub, gateReturn);
         } catch (err) {
             throw new Error(err);
@@ -195,7 +204,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let gate: Gate = JSON.parse(gateStr);
-            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, gate.position, new Date());
+
+            let gateIn = new Gate(gate.id, gate.idConnectedBay, gate.load, gate.enable, new Date());
             if (gate.preference != null) {
                 gateIn.preference = gate.preference;
             }
@@ -205,11 +215,72 @@ export class CollaborativeSorting implements ChaincodeInterface {
             if (gate.items != null && gate.items != []) {
                 gateIn.items = gate.items;
             }
-            await this.doEditGate(stub, gateIn);
+            this.logger.info('editGate -> CALL doEditGate');
+            await this.doEditGate(stub, gate);
         } catch (err) {
             throw new Error(err);
         }
     }
+
+    /* methods POST */
+    /* switchBay(stub: Stub, gateId string, idConnectedBay string, enable boolean ) */
+    /* The switchBay method is called to switch ON or switch OFF a bay connected to Gate */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async switchBay(stub: Stub, gateId: string, idConnectedBay: string, enable: boolean) {
+        this.logger.info('************* switchBay *************');
+        if (!gateId) {
+            throw new Error(`switchBay - ERROR: NO Gate in Input`);
+        }
+        try {
+            let gate: Gate = await this.getGateById(stub, gateId);
+            gate.enable = enable;
+
+            if (!gate.enable) {
+                if (gate.items != null && typeof gate.items !== 'undefined' && gate.items.length != 0) {
+                    for (let item of gate.items) {
+                        await this.assignItemToGate(stub, item);
+                    }
+                }
+            }
+            await this.doCreateEvent(stub, 'disableBay', gate, null);
+            gate.items = [];
+            this.logger.info('switchBay -> CALL doEditGate');
+            await this.doEditGate(stub, gate);
+
+        } catch (err) {
+            throw new Error(err);
+        }
+    }
+
+
+    /* methods POST */
+    /* updateLoad(stub: Stub, gateId string, idConnectedBay string, load double ) */
+    /* The updateLoad method is called to change the value of load in a bay connected to Gate */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+    public async updateLoad(stub: Stub, gateId: string, idConnectedBay: string, load: string) {
+        this.logger.info('************* updateLoad *************');
+        if (!gateId) {
+            throw new Error(`updateLoad - ERROR: NO Gate in Input`);
+        };
+
+        try {
+            let gate: Gate = await this.getGateById(stub, gateId);
+            gate.load = +load;
+            this.logger.info('updateLoad -> CALL doEditGate');
+            await this.doEditGate(stub, gate);
+        } catch (err) {
+            throw new Error(err);
+        }
+    }
+
 
     /* methods POST */
     /* editItemType(stub: Stub, itemTypeStr string) */
@@ -220,7 +291,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
     public async editItemType(stub: Stub, itemTypeStr: string) {
-        this.logger.info('************* editGate *************');
+        this.logger.info('************* editItemType *************');
         if (!itemTypeStr) {
             throw new Error(`editItemType - ERROR: NO ItemType in Input`);
         }
@@ -272,7 +343,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
             let gate = await stub.getState(keyGate);
             const gateObj = (Transform.bufferToObject(gate) as Gate);
             let items = Array<Item>();
-            if (gateObj && gateObj.items) {
+            this.logger.info('getItemsByGate for gate.id: ' + gateId);
+            if (gateObj && gateObj.items && gateObj.items != null && typeof gateObj.items != 'undefined') {
+                this.logger.info('getItemsByGate items found number:: ' + gateObj.items.length);
                 items = gateObj.items;
             }
             return items;
@@ -299,7 +372,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let keyGate: string = await this.generateKey(stub, 'GATE', gateId);
-            this.logger.debug('GET GATE by id with KEY: ' + keyGate);
+            this.logger.debug('getGateById - GET GATE by id with KEY GATE : ' + gateId);
+
             let gate = await stub.getState(keyGate);
             return Transform.bufferToObject(gate) as Gate;
         } catch (err) {
@@ -368,7 +442,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let keyItem: string = await this.generateKey(stub, 'ITEM', itemId);
-            this.logger.debug('GET ITEM by id with KEY: ' + keyItem);
+            this.logger.debug('GET ITEM by id with KEY: ITEM ' + itemId);
             let item = await stub.getState(keyItem);
             return Transform.bufferToObject(item) as Item;
         } catch (err) {
@@ -394,7 +468,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         }
         try {
             let keyItemType: string = await this.generateKey(stub, 'ITEMTYPE', itemTypeId);
-            this.logger.debug('GET ITEMTYPE by id with KEY: ' + keyItemType);
+            this.logger.debug('GET ITEMTYPE by id with KEY: ITEMTYPE ' + itemTypeId);
             let itemType = await stub.getState(keyItemType);
             return Transform.bufferToObject(itemType) as ItemType;
         } catch (err) {
@@ -461,6 +535,22 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info(`Args: ${stub.getArgs().join(',')}`);
         let args = stub.getArgs();
 
+        // INIT creates the Gate -1 for the items not assigned 
+
+        let gateItemsNotAssigned = new Gate('-1', '-1', 0, true, new Date());
+        try {
+            this.logger.info('Init Virtual Gate-> CALL doEditGate');
+            await this.doEditGate(stub, gateItemsNotAssigned);
+        } catch (err) {
+            this.logger.error('INIT - ERROR: Something wrong in doEditGate of gateItemsNotAssigned ' + err);
+            throw new Error('INIT - ERROR: Something wrong in doEditGate of gateItemsNotAssigned ' + err);
+        }
+        // This Gate is a virtual gate (-1) and will be contain the items not assigned at any Gate (connectedBay)
+        let gateInit: Gate;
+        gateInit = await this.getGateById(stub, '-1');
+        this.logger.info('INIT - This Gate is a virtual gate (-1) and contains the items not assigned');
+        // this.logger.info('INIT - The id of virtual gate is: ' + gateInit.id);
+
         /* Init method initializes a List of Bay (allBays) and a List of Type (allTypes)  */
         /* INIT 2 types initial (869990965260, 869990965261) */
         // DA QUI
@@ -475,8 +565,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 };
         
                 try {
-                    //    await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
-                    //    await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
+                    await stub.putState(typeA.id, Buffer.from(JSON.stringify(typeA)));
+                    await stub.putState(typeB.id, Buffer.from(JSON.stringify(typeB)));
                     await this.doEditItemType(stub, typeA);
                     await this.doEditItemType(stub, typeB);
                 } catch (err) {
@@ -491,76 +581,75 @@ export class CollaborativeSorting implements ChaincodeInterface {
             width:string, motorFrequency:string, motorVoltage: string, acceptedProduct:string) */
         /* QUI let payloadDefault = new Payload('Interroll', 'NST21550', '5', '1', '22', '500', '300', '60', '230', ''); */
 
-        // (id: string, idConnectedBay:string, load:number, enable:boolean, position:number, datetime:Date) {
+        // (id: string, idConnectedBay:string, load:number, enable:boolean, datetime:Date) {
 
-        /* DA QUI
-        let gateZero = new Gate('0', '0', 0, true, '0', new Date());
-        gateZero.addPreference(typeA);
-        payloadDefault.acceptedProduct = typeA.id;
-        gateZero.payload = payloadDefault;
-
-        let gateOne = new Gate('1', '2', 0, true, '5', new Date());
-        gateOne.addPreference(typeB);
-        payloadDefault.acceptedProduct = typeB.id;
-        gateOne.payload = payloadDefault;
-
-        let gateTwo = new Gate('2', '4', 0, true, '10', new Date());
-        gateTwo.addPreference(typeB);
-        payloadDefault.acceptedProduct = typeB.id;
-        gateTwo.payload = payloadDefault;
-
-        let gateThree = new Gate('3', '6', 0, true, '15', new Date());
-        gateThree.addPreference(typeA);
-        payloadDefault.acceptedProduct = typeA.id;
-        gateThree.payload = payloadDefault;
-
-        let gateFour = new Gate('4', '8', 0, true, '20', new Date());
-        gateFour.addPreference(typeB);
-        payloadDefault.acceptedProduct = typeB.id;
-        gateFour.payload = payloadDefault;
-
-        let gateFive = new Gate('5', '10', 0, true, '25', new Date());
-        gateFive.addPreference(typeA);
-        payloadDefault.acceptedProduct = typeA.id;
-        gateFive.payload = payloadDefault;
-
-        let gateSix = new Gate('6', '12', 0, true, '30', new Date());
-        gateSix.addPreference(typeB);
-        payloadDefault.acceptedProduct = typeB.id;
-        gateSix.payload = payloadDefault;
-
-        let gateSeven = new Gate('7', '14', 0, true, '35', new Date());
-        gateSeven.addPreference(typeA);
-        payloadDefault.acceptedProduct = typeA.id;
-        gateSeven.payload = payloadDefault;
-
-        let gateEight = new Gate('8', '16', 0, true, '40', new Date());
-        gateEight.addPreference(typeA);
-        payloadDefault.acceptedProduct = typeA.id;
-        gateEight.payload = payloadDefault;
-
-        let gateNine = new Gate('9', '18', 0, true, '45', new Date());
-        gateNine.addPreference(typeB);
-        payloadDefault.acceptedProduct = typeB.id;
-        gateNine.payload = payloadDefault;
+        /*    
+        let gateZero = new Gate('10', 'xcvbnm', 0, true, new Date());
+        //gateZero.addPreference(typeA);
 
 
-        try {
-            await this.doEditGate(stub, gateZero);
-            await this.doEditGate(stub, gateOne);
-            await this.doEditGate(stub, gateTwo);
-            await this.doEditGate(stub, gateThree);
-            await this.doEditGate(stub, gateFour);
-            await this.doEditGate(stub, gateFive);
-            await this.doEditGate(stub, gateSix);
-            await this.doEditGate(stub, gateSeven);
-            await this.doEditGate(stub, gateEight);
-            await this.doEditGate(stub, gateNine);
-        } catch (err) {
-            this.logger.error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
-            throw new Error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
-        }
-        A QUI */
+        let gateOne = new Gate('15', 'asdfghjkl', 0, true, new Date());
+        //gateOne.addPreference(typeB);
+
+        let gateTwo = new Gate('20', 'qwertyuiop', 0, true, new Date());
+        //gateTwo.addPreference(typeB);
+
+        let gateThree = new Gate('25', '1234567890', 0, true, new Date());
+        //gateThree.addPreference(typeA);
+        this.logger.info('Init MULTIPLE -> CALL doEditGate');
+        await this.doEditGate(stub, gateZero);
+        await this.doEditGate(stub, gateOne);
+        await this.doEditGate(stub, gateTwo);
+        await this.doEditGate(stub, gateThree);
+        */
+        /* DA QUI  
+                let gateFour = new Gate('4', '8', 0, true, '20', new Date());
+                gateFour.addPreference(typeB);
+                payloadDefault.acceptedProduct = typeB.id;
+                gateFour.payload = payloadDefault;
+        
+                let gateFive = new Gate('5', '10', 0, true, '25', new Date());
+                gateFive.addPreference(typeA);
+                payloadDefault.acceptedProduct = typeA.id;
+                gateFive.payload = payloadDefault;
+        
+                let gateSix = new Gate('6', '12', 0, true, '30', new Date());
+                gateSix.addPreference(typeB);
+                payloadDefault.acceptedProduct = typeB.id;
+                gateSix.payload = payloadDefault;
+        
+                let gateSeven = new Gate('7', '14', 0, true, '35', new Date());
+                gateSeven.addPreference(typeA);
+                payloadDefault.acceptedProduct = typeA.id;
+                gateSeven.payload = payloadDefault;
+        
+                let gateEight = new Gate('8', '16', 0, true, '40', new Date());
+                gateEight.addPreference(typeA);
+                payloadDefault.acceptedProduct = typeA.id;
+                gateEight.payload = payloadDefault;
+        
+                let gateNine = new Gate('9', '18', 0, true, '45', new Date());
+                gateNine.addPreference(typeB);
+                payloadDefault.acceptedProduct = typeB.id;
+                gateNine.payload = payloadDefault;
+        
+        
+                try {
+                    await this.doEditGate(stub, gateZero);
+                    await this.doEditGate(stub, gateOne);
+                    await this.doEditGate(stub, gateTwo);
+                    await this.doEditGate(stub, gateThree);
+                    await this.doEditGate(stub, gateFour);
+                    await this.doEditGate(stub, gateFive);
+                    await this.doEditGate(stub, gateSix);
+                    await this.doEditGate(stub, gateSeven);
+                    await this.doEditGate(stub, gateEight);
+                    await this.doEditGate(stub, gateNine);
+                } catch (err) {
+                    this.logger.error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
+                    throw new Error('INIT - ERROR: Something wrong in doEditGate of gate ' + err);
+                }
+                A QUI */
         // In INIT all Items must have state null
         /*       let iterator = await stub.getStateByPartialCompositeKey('ITEM', []);
                let items = await Transform.iteratorToObjectList(iterator);
@@ -677,13 +766,11 @@ export class CollaborativeSorting implements ChaincodeInterface {
      */
 
     private async controlGates(stub: Stub) {
-        this.logger.info('############################## ATTENTION ##########################');
-        this.logger.info('##########  TO DO Insert controlGates in storeItem Method #########');
-        this.logger.info('###################################################################');
-
+        this.logger.info('######################## controlGates #######################');
         try {
             let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
             let gates = await Transform.iteratorToObjectList(iterator);
+            let itemsToAssign = Array<Item>();
             let displayDate: Date = new Date();
             let mill = displayDate.getTime();
             mill = mill - 60000;
@@ -691,25 +778,74 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
             for (let gate of gates) {
                 let exitGate = gate as Gate;
-                // this.logger.info('CONTROL Gate with id: ' + gate.id);
                 let gateDate = new Date(exitGate.datetime).getTime();
-                if (gateDate < mill) {
-                    this.logger.info('Gate with id: ' + exitGate.id + ' switched OFF due to inactivity ');
 
-                    if (exitGate.items != null) {
-                        for (let item of exitGate.items) {
-                            await this.assignItemToGate(stub, item);
-                        }
+                // TEMPORARY LOG
+                let its = Array<Item>();
+                its = await this.getItemsByGate(stub, exitGate.id);
+                this.logger.debug('controlGates - GATE IS: ' + exitGate.enable);
+                this.logger.debug('controlGates - NUMBER ITEMS in GATE LEDGER: ' + its.length);
+                for (let itemElem of its) {
+                    let item = itemElem as Item;
+                    this.logger.debug('controlGates - ITEMS in GATE LEDGER: ' + item.id);
+                }
+                // END TEMPORARY LOG
+
+                if (exitGate.id != '-1' && gateDate < mill) {
+                    this.logger.error('controlGates - Gate with id: ' + exitGate.id + ' switched OFF due to inactivity ');
+                    if (exitGate.items != null && typeof exitGate.items !== 'undefined' && exitGate.items.length != 0) {
+                        exitGate.enable = false;
+                        // Save the array of item to reassign to new gate after disable this
+                        itemsToAssign = exitGate.items;
                     }
-                    exitGate.enable = false;
+
+                    await this.doCreateEvent(stub, 'disableBay', exitGate, null);
                     exitGate.items = [];
+                    this.logger.info('controlGates -> CALL doEditGate');
                     await this.doEditGate(stub, exitGate);
+                    // ReAssign the items 
+                    if (itemsToAssign.length != 0) {
+                        for (let it of itemsToAssign) {
+                            await this.assignItemToGate(stub, it);
+                        }   
+                    }
                 }
             }
         } catch (err) {
             throw new Error(err);
         }
     }
+
+
+    /* methods POST */
+    /* controlItemsNotAssigned() */
+    /* The controlItemsNotAssigned method is called to reassigned the items not assigned before  */
+    /**
+     * Handle custom method execution
+     *
+     * @param stub
+     */
+
+    private async controlItemsNotAssigned(stub: Stub) {
+        this.logger.info('######################## controlItemsNotAssigned #######################');
+        try {
+            let gateVirtual = await this.getGateById(stub, '-1');
+            let items = new Array<Item>();
+            items = await this.getItemsByGate(stub, '-1');
+            this.logger.debug('controlItemsNotAssigned - Number of item not assigned: ' + items.length);
+            if (items && items.length > 0) {
+                for (let item of items) {
+                    gateVirtual.items.splice(gateVirtual.items.indexOf(item), 1);
+                    this.assignItemToGate(stub, item);
+                }
+            }
+        } catch (err) {
+            this.logger.error('controlItemsNotAssigned - Error with code: ' + err);
+            throw new Error(err);
+        }
+    }
+
+
 
     /* methods POST */
     /* assignItemToGate */
@@ -720,65 +856,112 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
     private async assignItemToGate(stub: Stub, item: Item) {
-        this.logger.info('########### assignItemToGate ###########');
+        this.logger.info('######################## assignItemToGate #######################');
 
-        let gatesCompatible = Array<Gate>();
-        let gatesAvailable = Array<Gate>();
+        let gateCompatible = new Array<Gate>();
+        let gateAvailable = new Array<Gate>();
+        let gateMixed = new Array<Gate>();
         let gateSelected: Gate;
+        let gateNotAssigned: Gate;
+        // let isInitGate: Boolean;
+
         try {
             let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
             let gates = await Transform.iteratorToObjectList(iterator);
+
+            this.logger.info('######### Number of GATE to scroll to associate the item ########');
+            this.logger.debug('assignItemToGate - NUMBER OF GATES  : ' + gates.length);
+            this.logger.debug('assignItemToGate - ITEM TO ASSIGN ID: ' + item.id);
+            this.logger.debug('assignItemToGate - ITEM TEMTYPE   ID: ' + item.type.id);
+            this.logger.info('##################################################################');
+
+            this.OrderByArray(gates, 'id');
+
             for (let gate of gates) {
                 let exitGate = gate as Gate;
-                if (exitGate.enable && exitGate.idConnectedBay != null) {
-                    if (exitGate.load < 1) {
-                        let isFound = false;
-                        for (let pref of exitGate.preference) {
-                            if (pref.id === item.type.id) {
-                                gatesCompatible.push(exitGate);
-                                isFound = true;
+                if (exitGate.id != '-1' && exitGate.enable) {
+                    this.logger.debug('assignItemToGate - PROCESS GATE ID    : ' + exitGate.id);
+                    this.logger.debug('assignItemToGate - GATE IDCONNECTEDBAY: ' + exitGate.idConnectedBay);
+                    this.logger.debug('assignItemToGate - GATE LOAD          : ' + exitGate.load);
+                    if (exitGate.enable && exitGate.idConnectedBay != null) {
+                        if (exitGate.load < 1) {
+                            if (exitGate.preference && exitGate.preference.id == item.type.id) {
+                                this.logger.debug('assignItemToGate - GATE PREFERENCE: ' + exitGate.preference.id);
+                                gateCompatible.push(exitGate);
+                            } else {
+                                if (typeof exitGate.preference === 'undefined' ||
+                                    exitGate.preference == null ||
+                                    typeof exitGate.preference.id === 'undefined') {
+                                    this.logger.debug('assignItemToGate - GATE WITHOUT PREFERENCE: ' + exitGate.id);
+                                    gateAvailable.push(exitGate);
+                                } else {
+                                    if (exitGate.preference.id == '*') {
+                                        this.logger.debug('assignItemToGate - GATE mixed: ' + exitGate.id);
+                                        gateMixed.push(exitGate);
+                                    } else {
+                                        this.logger.debug('assignItemToGate - GATE NOT COMPATIBLE ID: ' + exitGate.id);
+                                        this.logger.debug('assignItemToGate - GATE PREFERENCE     ID: ' + exitGate.preference.id);
+                                        gateNotAssigned = exitGate;
+                                    }
+                                }
                             }
-                        }
-                        if (!isFound) {
-                            gatesAvailable.push(exitGate);
+
+                        } else {
+                            this.logger.info('assignItemToGate - GATE OVERLOAD ID: ' + exitGate.id);
+                            this.logger.info('assignItemToGate - GATE LOAD       : ' + exitGate.load);
                         }
                     } else {
-                        this.logger.debug('assignItemToGate - GATE OVERLOAD ID: ' + exitGate.id);
-                        this.logger.debug('assignItemToGate - GATE LOAD       : ' + exitGate.load);
+                        this.logger.info('assignItemToGate - GATE NOT READY - ID    : ' + exitGate.id);
+                        this.logger.info('assignItemToGate - GATE NOT READY - ENA   : ' + exitGate.enable);
+                        this.logger.info('assignItemToGate - GATE NOT READY - BAY   : ' + exitGate.idConnectedBay);
                     }
-                } else {
-                    this.logger.debug('assignItemToGate - GATE NOT READY - ID    : ' + exitGate.id);
-                    this.logger.debug('assignItemToGate - GATE NOT READY - ENA   : ' + exitGate.enable);
-                    this.logger.debug('assignItemToGate - GATE NOT READY - BAY   : ' + exitGate.idConnectedBay);
                 }
             }
-            this.logger.debug('assignItemToGate - For Item with id: ' + item.id + ' + GATE COMPATIBLE IS (number): ' + gatesCompatible.length);
-            this.logger.debug('assignItemToGate - For Item with id: ' + item.id + ' + GATE AVAILABLE IS (number) : ' + gatesAvailable.length);
-            if (gatesCompatible.length != 0) {
-                if (gatesCompatible.length != 1) {
-                    this.OrderByArray(gatesCompatible, 'load');
-                }
-                gateSelected = gatesCompatible[0];
-            } else {
-                if (gatesAvailable.length != 0) {
-                    if (gatesAvailable.length != 1) {
-                        this.OrderByArray(gatesAvailable, 'load');
-                    }
-                    gateSelected = gatesAvailable[0];
-                } else {
-                    this.logger.error(`assignItemToGate - ERROR: NO Gates available for Item: ` + item.id);
-                    this.logger.error(`assignItemToGate - ITEM TYPE : ` + item.type.id);
 
-                    throw new Error(`assignItemToGate - ERROR: NO Gates available for Item ` + item.id);
-                }
+            // isInitGate = false;
+            this.logger.debug('assignItemToGate - Number of Gate Compatible: ' + gateCompatible.length);
+            this.logger.debug('assignItemToGate - Number of Gate Avaiable  : ' + gateAvailable.length);
+            this.logger.debug('assignItemToGate - Number of Gate Mixed     : ' + gateMixed.length);
+
+            if (gateCompatible.length > 0) {
+                this.logger.debug('assignItemToGate - GATE SELECTED Compatible: ' + gateCompatible[0].id);
+                this.logger.debug('assignItemToGate - WITH PREFERENCE         : ' + gateCompatible[0].preference.id);
+                gateSelected = gateCompatible[0];
+            } else if (gateAvailable.length > 0) {
+                this.logger.debug('assignItemToGate - GATE SELECTED Available: ' + gateAvailable[0].id);
+                gateSelected = gateAvailable[0];
+                gateSelected.preference = item.type;
+                // isInitGate = true;
+            } else if (gateMixed.length > 0) {
+                this.logger.debug('assignItemToGate - GATE SELECTED Mixed: ' + gateMixed[0].id);
+                gateSelected = gateMixed[0];
+            } else if (gateNotAssigned) {
+                this.logger.warning('assignItemToGate - GATE NOT FOUND. ITEM NOT ASSIGNED');
+                gateSelected = await this.getGateById(stub, '-1');
             }
+
             gateSelected.items.push(item);
             gateSelected.datetime = new Date();
-            /* Call the method for insert/update the gate into the ledger */
+            this.logger.info('assignItemToGate -> CALL doEditGate');
             await this.doEditGate(stub, gateSelected);
-            await this.doCreateEvent(stub, 'assignItemToGate', gateSelected, item);
+            if (gateSelected.id != '-1') {
+                this.logger.debug('assignItemToGate - CREATE EVENT. ITEM ASSIGNED: ' + item.id);
+                await this.doCreateEvent(stub, 'assignItemToGate', gateSelected, item);
+            }
+
+            //TODO addPreference at next bay (only preference, no item). 
+            /* if (isInitGate && gateAvailable[1]) {
+                gateSelected = gateAvailable[1];
+                gateSelected.preference = item.type;
+                await this.doEditGate(stub, gateSelected);
+            } */
+
+            this.logger.info('######################## REPORT OK assignItemToGate REPORT OK #######################');
             this.logger.info('assignItemToGate - ID ITEM IN LOOP: ' + item.id + ' GATE DESTINATION ASSIGNED: ' + gateSelected.id);
             this.logger.info('assignItemToGate - Load of BAY connected at the GATE PRE-ASSIGNED: ' + gateSelected.load);
+            this.logger.info('############################## END assignItemToGate END #############################');
+
+            return gateSelected.id;
         } catch (err) {
             throw new Error(err);
         }
@@ -793,43 +976,18 @@ export class CollaborativeSorting implements ChaincodeInterface {
      * @param stub
      */
     private async doEditGate(stub: Stub, gate: Gate) {
-        this.logger.info('########### insertGateIntoTheLedger : ' + gate.id + ' ###########');
+        this.logger.info('########### doEditGate: ' + gate.id + ' ###########');
 
         try {
-            mapPosGate.set(gate.position, gate.id);
             let keyGate = await this.generateKey(stub, 'GATE', gate.id);
-            this.logger.debug('PUT GATE by id with KEY: ' + keyGate + '<- ');
+            this.logger.debug('doEditGate - PUT GATE by id with KEY: GATE ' + gate.id);
+            this.logger.debug('doEditGate - Items in gate edited: ' + gate.items.length);
             await stub.putState(keyGate, Buffer.from(JSON.stringify(gate)));
         } catch (err) {
             this.logger.error('doEditGate - ERROR: Something wrong in put State of gate ' + err);
             this.logger.error('doEditGate - GATE id: ' + gate.id);
             throw new Error('doEditGate - ERROR: Something wrong in put State of bay ' + err);
         }
-    }
-
-    /* doEditPreference */
-    /* The doEditPreference method is called to insert itemType in preferences if necessary */
-    /**
-     * Handle custom method execution
-     *
-     * @param stub
-     */
-    private async doEditPreference(stub: Stub, gate: Gate) {
-        this.logger.info('########### doEditPreference : ' + gate.payload.acceptedProduct + ' ###########');
-
-        let isPresent: Boolean = false;
-        for (let it of gate.preference) {
-            if (it.id === gate.payload.acceptedProduct) {
-                isPresent = true;
-            }
-        }
-        if (!isPresent && gate.payload.acceptedProduct != null) {
-            let itemType = new ItemType(gate.payload.acceptedProduct, '');
-            await this.doEditItemType(stub, itemType);
-            gate.addPreference(itemType);
-        }
-        return gate;
-
     }
 
     /* doCreateEvent */
@@ -842,12 +1000,23 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
     private async doCreateEvent(stub: Stub, funct: string, gate: Gate, item: Item) {
         this.logger.info('########### doCreateEvent ###########');
-        if (funct == null || (funct != 'storeBay' && funct != 'removeBay' && funct != 'assignItemToGate')) {
+        if (funct == null || (funct != 'storeBay' && funct != 'removeBay' &&
+            funct != 'assignItemToGate' && funct != 'disableBay')) {
             this.logger.error('doCreateEvent ERROR: funct is empty or not valid value: ' + funct);
             throw new Error('doCreateEvent ERROR: id is empty or not valid value: ' + funct);
         }
         try {
-            let event = new Event(gate.idConnectedBay, gate.position, JSON.stringify(gate.payload));
+            let idPreference = '';
+            if (typeof gate.preference !== 'undefined' &&
+                gate.preference != null &&
+                typeof gate.preference.id !== 'undefined') {
+                idPreference = gate.preference.id;
+            }
+
+            this.logger.info('doCreateEvent SEND PREFERENCE      : ' + idPreference);
+            this.logger.info('doCreateEvent SEND POSITION (id)   : ' + gate.id);
+            this.logger.info('doCreateEvent SEND IDCONNECTEDBAY  : ' + gate.idConnectedBay);
+            let event = new Event(gate.idConnectedBay, gate.id, JSON.stringify(gate.payload), idPreference);
             if (item) {
                 event.payload = JSON.stringify(item);
             }
@@ -874,7 +1043,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         try {
             let keyItemType = await this.generateKey(stub, 'ITEMTYPE', itemType.id);
-            this.logger.debug('PUT ITEMTYPE by id with KEY: ' + keyItemType + '<- ');
+            this.logger.debug('PUT ITEMTYPE by id with KEY: ITEMTYPE ' + itemType.id + '<- ');
             await stub.putState(keyItemType, Buffer.from(JSON.stringify(itemType)));
         } catch (err) {
             this.logger.error('doEditItemType - ERROR: Something wrong in put State of itemType ' + err);
@@ -911,18 +1080,30 @@ export class CollaborativeSorting implements ChaincodeInterface {
         let isFound = false;
         for (let gate of gates) {
             let gat = gate as Gate;
-            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
+            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.datetime);
             if (gat.preference != null) {
                 exitGate.preference = gat.preference;
             }
             if (gat.payload != null) {
                 exitGate.payload = gat.payload;
             }
-            if (gat.items != null && gat.items != []) {
-                exitGate.items = gat.items;
+            this.logger.debug('doGrabItem - Gate with number of items: ' + gat.items.length);
+            if (gat.items != null && gat.items != [] && gat.items.length != 0) {
+
+                // TEMPORARY
+                let its = Array<Item>();
+                its = await this.getItemsByGate(stub, gat.id);
+                this.logger.debug('doGrabItem - GATE WITH ITEMS: ' + gat.id);
+                this.logger.debug('doGrabItem - NUMBER ITEMS in GATE: ' + its.length);
+                for (let itemElem of its) {
+                    let item = itemElem as Item;
+                    this.logger.debug('heartbeat - ITEMS in GATE: ' + item.id);
+                }
+                exitGate.items = its;
             }
 
             this.logger.debug('doGrabItem - Gate with id: ' + exitGate.id);
+            this.logger.debug('doGrabItem - Gate with enable: ' + exitGate.enable);
             this.logger.debug('doGrabItem - Gate with idConnectedBay: ' + exitGate.idConnectedBay);
             this.logger.debug('doGrabItem - Gate with exitGate.items.length: ' + exitGate.items.length);
 
@@ -936,7 +1117,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
                         isFound = true;
                         try {
                             /* remove the item from the list items assigned to the Gate exitGate and update the Gate */
-                            exitGate.removeItem(itemOfGate);
+                            exitGate.items.splice(exitGate.items.indexOf(itemOfGate), 1);
+                            this.logger.info('doGrabItem -> CALL doEditGate');
                             await this.doEditGate(stub, exitGate);
                             this.logger.debug('doGrabItem - Post editGate method: ' + exitGate.id);
                         } catch (err) {
@@ -980,7 +1162,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         let gates = await Transform.iteratorToObjectList(iterator);
         for (let gate of gates) {
             let gat = gate as Gate;
-            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.position, gat.datetime);
+            let exitGate = new Gate(gat.id, gat.idConnectedBay, gat.load, gat.enable, gat.datetime);
             if (gat.preference != null) {
                 exitGate.preference = gat.preference;
             }
@@ -1038,8 +1220,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
     }
 
     private async  generateKey(stub: Stub, type: string, id: string) {
-        this.logger.info('########### generateKey for ' + id + ' of TYPE ' + type + ' ######');
-        // return stub.createCompositeKey(type, [id]);
-        return type + id;
+        return stub.createCompositeKey(type, [id]);
+        // return type + ' ' + id;
     }
-}
+}   
