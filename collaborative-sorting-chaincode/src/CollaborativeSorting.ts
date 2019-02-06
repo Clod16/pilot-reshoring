@@ -47,7 +47,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         const item: Item = JSON.parse(itemStr);
         try {
             await this.controlGates(stub);
-            await this.controlItemsNotAssigned(stub);
+            // await this.controlItemsNotAssigned(stub);
             await this.assignItemToGate(stub, item);
         } catch (err) {
             throw new Error('storeItem in assigne function - ERROR with code: ' + err);
@@ -83,7 +83,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
             if (gate.payload != null) {
                 gateIn.payload = gate.payload;
             }
-            if (gate.items != null && gate.items != []) {
+            if (gate.items != null && gate.items != [] && gate.items.length != 0) {
                 gateIn.items = gate.items;
             }
             this.logger.info('storeBay -> CALL doEditGate');
@@ -179,8 +179,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 this.logger.debug('heartbeat - ITEMS in GATE LEDGER: ' + item.id);
             }
 
-
-
+            gateReturn.enable = true;
             gateReturn.datetime = new Date();
             this.logger.info('heartbeat -> CALL doEditGate');
             await this.doEditGate(stub, gateReturn);
@@ -230,7 +229,16 @@ export class CollaborativeSorting implements ChaincodeInterface {
      *
      * @param stub
      */
-    public async switchBay(stub: Stub, gateId: string, idConnectedBay: string, enable: boolean) {
+    // public async switchBay(stub: Stub, gateId: string, idConnectedBay: string, enable: boolean) {
+    public async switchBay(stub: Stub, args: string[]) {
+        this.logger.info('************* switchBay *************');
+        let gateId: string = args[0];
+        let enable: boolean = (args[2] == 'true');
+        let itemsToAssign: Item[] = [];
+        if (!gateId) {
+            throw new Error(`switchBay - ERROR: NO Gate in Input`);
+        };
+
         this.logger.info('************* switchBay *************');
         if (!gateId) {
             throw new Error(`switchBay - ERROR: NO Gate in Input`);
@@ -241,15 +249,23 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
             if (!gate.enable) {
                 if (gate.items != null && typeof gate.items !== 'undefined' && gate.items.length != 0) {
-                    for (let item of gate.items) {
-                        await this.assignItemToGate(stub, item);
-                    }
+                    // Save the array of item to reassign to new gate after disable this
+                    itemsToAssign = gate.items;
                 }
+                await this.doCreateEvent(stub, 'disableBay', gate, null);
+                gate.items = [];
             }
-            await this.doCreateEvent(stub, 'disableBay', gate, null);
-            gate.items = [];
+
+            
             this.logger.info('switchBay -> CALL doEditGate');
             await this.doEditGate(stub, gate);
+            // ReAssign the items 
+            if (itemsToAssign.length != 0) {
+                for (let it of itemsToAssign) {
+
+                    await this.assignItemToGate(stub, it);
+                }
+            }
 
         } catch (err) {
             throw new Error(err);
@@ -258,22 +274,29 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
 
     /* methods POST */
-    /* updateLoad(stub: Stub, gateId string, idConnectedBay string, load double ) */
+    /* updateLoad(stub: Stub, gateId string, idConnectedBay string, load string ) */
     /* The updateLoad method is called to change the value of load in a bay connected to Gate */
     /**
      * Handle custom method execution
      *
      * @param stub
      */
-    public async updateLoad(stub: Stub, gateId: string, idConnectedBay: string, load: string) {
+    // public async updateLoad(stub: Stub, gateId: string, idConnectedBay: string, load: string) {
+    public async updateLoad(stub: Stub, args: string[]) {
         this.logger.info('************* updateLoad *************');
+        let gateId: string = args[0];
+        let load: string = args[2];
         if (!gateId) {
             throw new Error(`updateLoad - ERROR: NO Gate in Input`);
         };
 
         try {
             let gate: Gate = await this.getGateById(stub, gateId);
+            this.logger.debug('updateLoad - UPDATE LOAD GATE ID:' + gateId);
+            this.logger.debug('updateLoad - OLD LOAD of GATE   :' + gate.load);
+            this.logger.debug('updateLoad - NEW LOAD of GATE STR:' + load);
             gate.load = +load;
+            this.logger.debug('updateLoad - NEW LOAD of GATE NUM:' + gate.load);
             this.logger.info('updateLoad -> CALL doEditGate');
             await this.doEditGate(stub, gate);
         } catch (err) {
@@ -726,10 +749,14 @@ export class CollaborativeSorting implements ChaincodeInterface {
             // let payload = await method.call(this, this.getStubHelperFor(stub), params);
             // ascatox Using this.getStubHelper is impossible to test :-(
             let arg: String = '';
-            if (params && params[0]) {
+            let payload = null;
+            if (params && params[0] && params.length == 1) {
                 arg = params[0];
+                payload = await method.call(this, stub, arg);
+            } else if (params.length > 1) {
+                payload = await method.call(this, stub, params);
             }
-            let payload = await method.call(this, stub, arg);
+
 
             if (payload && !Buffer.isBuffer(payload)) {
                 payload = Buffer.from(JSON.stringify(Transform.normalizePayload(payload)));
@@ -770,15 +797,14 @@ export class CollaborativeSorting implements ChaincodeInterface {
         try {
             let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
             let gates = await Transform.iteratorToObjectList(iterator);
-            let itemsToAssign = Array<Item>();
             let displayDate: Date = new Date();
             let mill = displayDate.getTime();
-            mill = mill - 60000;
-            // let num = displayDate.setSeconds(displayDate.getSeconds() - 15);
-
+            //    mill = mill - 60000;      // 60 secondi
+            mill = mill - 1800000;      // 1800000 ms = 1800 s = 30 m
             for (let gate of gates) {
                 let exitGate = gate as Gate;
                 let gateDate = new Date(exitGate.datetime).getTime();
+                let itemsToAssign: Item[] = [];
 
                 // TEMPORARY LOG
                 let its = Array<Item>();
@@ -806,8 +832,9 @@ export class CollaborativeSorting implements ChaincodeInterface {
                     // ReAssign the items 
                     if (itemsToAssign.length != 0) {
                         for (let it of itemsToAssign) {
+
                             await this.assignItemToGate(stub, it);
-                        }   
+                        }
                     }
                 }
             }
@@ -830,13 +857,13 @@ export class CollaborativeSorting implements ChaincodeInterface {
         this.logger.info('######################## controlItemsNotAssigned #######################');
         try {
             let gateVirtual = await this.getGateById(stub, '-1');
-            let items = new Array<Item>();
-            items = await this.getItemsByGate(stub, '-1');
-            this.logger.debug('controlItemsNotAssigned - Number of item not assigned: ' + items.length);
-            if (items && items.length > 0) {
-                for (let item of items) {
-                    gateVirtual.items.splice(gateVirtual.items.indexOf(item), 1);
-                    this.assignItemToGate(stub, item);
+            this.logger.debug('controlItemsNotAssigned - Number of item not assigned: ' + gateVirtual.items.length);
+            if (gateVirtual.items && gateVirtual.items.length > 0) {
+                for (let item of gateVirtual.items) {
+                    let itRemoved = await gateVirtual.items.splice(gateVirtual.items.indexOf(item), 1);
+                    this.logger.debug('controlItemsNotAssigned - Item REMOVED From VirtualGate: ' + itRemoved[0].id);
+                    await this.doEditGate(stub, gateVirtual);
+                    await this.assignItemToGate(stub, item);
                 }
             }
         } catch (err) {
@@ -864,6 +891,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
         let gateSelected: Gate;
         let gateNotAssigned: Gate;
         // let isInitGate: Boolean;
+        let isAvailableToChangePref: Boolean;
 
         try {
             let iterator = await stub.getStateByPartialCompositeKey('GATE', []);
@@ -879,6 +907,7 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
             for (let gate of gates) {
                 let exitGate = gate as Gate;
+                isAvailableToChangePref = false;
                 if (exitGate.id != '-1' && exitGate.enable) {
                     this.logger.debug('assignItemToGate - PROCESS GATE ID    : ' + exitGate.id);
                     this.logger.debug('assignItemToGate - GATE IDCONNECTEDBAY: ' + exitGate.idConnectedBay);
@@ -899,9 +928,17 @@ export class CollaborativeSorting implements ChaincodeInterface {
                                         this.logger.debug('assignItemToGate - GATE mixed: ' + exitGate.id);
                                         gateMixed.push(exitGate);
                                     } else {
-                                        this.logger.debug('assignItemToGate - GATE NOT COMPATIBLE ID: ' + exitGate.id);
-                                        this.logger.debug('assignItemToGate - GATE PREFERENCE     ID: ' + exitGate.preference.id);
-                                        gateNotAssigned = exitGate;
+                                        if (exitGate.items.length == 0 && exitGate.load == 0) {
+                                            this.logger.debug('assignItemToGate - GATE NOT COMPATIBLE BUT WITHOUT ITEMS: ' + exitGate.id);
+                                            this.logger.debug('assignItemToGate - GATE PREFERENCE     ID: ' + exitGate.preference.id);
+                                            isAvailableToChangePref = true;
+                                            gateAvailable.push(exitGate);
+                                        } else {
+                                            this.logger.debug('assignItemToGate - GATE NOT COMPATIBLE ID: ' + exitGate.id);
+                                            this.logger.debug('assignItemToGate - GATE PREFERENCE     ID: ' + exitGate.preference.id);
+                                            gateNotAssigned = await this.getGateById(stub, '-1');;
+                                        }
+
                                     }
                                 }
                             }
@@ -935,12 +972,12 @@ export class CollaborativeSorting implements ChaincodeInterface {
             } else if (gateMixed.length > 0) {
                 this.logger.debug('assignItemToGate - GATE SELECTED Mixed: ' + gateMixed[0].id);
                 gateSelected = gateMixed[0];
-            } else if (gateNotAssigned) {
-                this.logger.warning('assignItemToGate - GATE NOT FOUND. ITEM NOT ASSIGNED');
-                gateSelected = await this.getGateById(stub, '-1');
+            } else {
+                this.logger.warn('assignItemToGate - GATE NOT FOUND. ITEM NOT ASSIGNED');
+                gateSelected = gateNotAssigned;
             }
-
-            gateSelected.items.push(item);
+            gateSelected.items.indexOf(item) === -1 ? gateSelected.items.push(item) : this.logger.warn('assignItemToGate - ITEM: ' + item.id + 'ALREADY PRESENT IN GATE: '+ gateSelected.id);;
+            // gateSelected.items.push(item);
             gateSelected.datetime = new Date();
             this.logger.info('assignItemToGate -> CALL doEditGate');
             await this.doEditGate(stub, gateSelected);
@@ -961,7 +998,6 @@ export class CollaborativeSorting implements ChaincodeInterface {
             this.logger.info('assignItemToGate - Load of BAY connected at the GATE PRE-ASSIGNED: ' + gateSelected.load);
             this.logger.info('############################## END assignItemToGate END #############################');
 
-            return gateSelected.id;
         } catch (err) {
             throw new Error(err);
         }
@@ -980,8 +1016,10 @@ export class CollaborativeSorting implements ChaincodeInterface {
 
         try {
             let keyGate = await this.generateKey(stub, 'GATE', gate.id);
-            this.logger.debug('doEditGate - PUT GATE by id with KEY: GATE ' + gate.id);
+            this.logger.debug('doEditGate - PUT GATE with KEY   : GATE ' + gate.id);
             this.logger.debug('doEditGate - Items in gate edited: ' + gate.items.length);
+            this.logger.debug('doEditGate - Gate.enable         : ' + gate.enable);
+            this.logger.debug('doEditGate - Gate.load           : ' + gate.load);
             await stub.putState(keyGate, Buffer.from(JSON.stringify(gate)));
         } catch (err) {
             this.logger.error('doEditGate - ERROR: Something wrong in put State of gate ' + err);
@@ -1093,11 +1131,12 @@ export class CollaborativeSorting implements ChaincodeInterface {
                 // TEMPORARY
                 let its = Array<Item>();
                 its = await this.getItemsByGate(stub, gat.id);
-                this.logger.debug('doGrabItem - GATE WITH ITEMS: ' + gat.id);
+                this.logger.debug('doGrabItem - GATE WITH ITEMS ID  : ' + gat.id);
                 this.logger.debug('doGrabItem - NUMBER ITEMS in GATE: ' + its.length);
+                this.logger.debug('doGrabItem - LOAD OF THIS GATE   : ' + gat.load);
                 for (let itemElem of its) {
                     let item = itemElem as Item;
-                    this.logger.debug('heartbeat - ITEMS in GATE: ' + item.id);
+                    this.logger.debug('doGrabItem - ITEMS in GATE: ' + item.id);
                 }
                 exitGate.items = its;
             }
@@ -1117,7 +1156,8 @@ export class CollaborativeSorting implements ChaincodeInterface {
                         isFound = true;
                         try {
                             /* remove the item from the list items assigned to the Gate exitGate and update the Gate */
-                            exitGate.items.splice(exitGate.items.indexOf(itemOfGate), 1);
+                            let itRemoved = await exitGate.items.splice(exitGate.items.indexOf(itemOfGate), 1);
+                            this.logger.info('doGrabItem -> ITEM REMOVED ID: ' + itRemoved[0].id);
                             this.logger.info('doGrabItem -> CALL doEditGate');
                             await this.doEditGate(stub, exitGate);
                             this.logger.debug('doGrabItem - Post editGate method: ' + exitGate.id);
