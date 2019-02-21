@@ -45,7 +45,8 @@ describe('Test Mockstub', () => {
             inLoop: null,
             type: {
                 id: '869990965260',
-                description: 'oven'
+                description: 'oven',
+                doubleSize: false
             },
             position: 0
         };

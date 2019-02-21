@@ -12,6 +12,7 @@ export class Gate {
     public items            : Array<Item>;  /* Items in ConveyorLoop assigned at this Gate*/
     public datetime         : Date;
     public payload          : Payload;
+    public doubleSize       : boolean;
     
     constructor(id: string, idConnectedBay:string, load:number, enable:boolean, datetime:Date) {
         this.typeObject     = 'GATE';
@@ -23,6 +24,7 @@ export class Gate {
         this.items          = [];
         this.datetime       = datetime;
         this.payload        = null;
+        this.doubleSize     = false;
     }
 
     public addPreference(itemType:ItemType) {
